@@ -1,0 +1,548 @@
+<section id="rule-sources-page" class="flex h-[calc(100vh-56px)] min-h-0 flex-col gap-4 overflow-hidden">
+    <header class="flex justify-end">
+      <div class="flex flex-wrap items-center gap-2">
+        <button type="button" data-action="refresh" class="inline-flex items-center gap-1.5 rounded-rf border border-rf-border bg-white px-3.5 py-[7px] text-[13.5px] font-medium leading-[1.2] text-rf-text transition hover:bg-slate-50">刷新</button>
+        <button type="button" data-action="create" class="inline-flex items-center gap-1.5 rounded-rf border border-[#18c865] bg-[#18c865] px-3.5 py-[7px] text-[13.5px] font-medium leading-[1.2] text-white transition hover:border-[#15b25a] hover:bg-[#15b25a]">
+          <svg class="h-[14px] w-[14px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          新建规则源
+        </button>
+      </div>
+    </header>
+
+    <div id="rule-sources-content" class="min-h-0 flex-1 overflow-auto"></div>
+    <div id="rule-sources-modal-root"></div>
+    <div id="rule-sources-delete-root"></div>
+    <div id="rule-sources-toast-root" class="pointer-events-none fixed bottom-[18px] left-[18px] z-[9999] flex flex-col gap-2"></div>
+  </section>
+
+  <script>
+    (() => {
+      const root = document.getElementById('rule-sources-page');
+      if (!root) return;
+
+      const contentEl = document.getElementById('rule-sources-content');
+      const modalRoot = document.getElementById('rule-sources-modal-root');
+      const deleteRoot = document.getElementById('rule-sources-delete-root');
+      const toastRoot = document.getElementById('rule-sources-toast-root');
+
+      const FORMAT_OPTIONS = [
+        ['surge', 'Surge Classical'],
+        ['clash-classical', 'Clash Classical'],
+        ['clash-domain', 'Clash Domain'],
+        ['clash-ipcidr', 'Clash IPCIDR'],
+        ['domain-list', 'Domain List'],
+        ['ip-list', 'IP List'],
+      ];
+
+      const state = {
+        items: [],
+        loading: true,
+        showModal: false,
+        editItem: null,
+        form: defaultForm(),
+        saving: false,
+        syncingId: null,
+        deleteTarget: null,
+        deleting: false,
+        toasts: [],
+      };
+
+      function defaultForm() {
+        return {
+          name: '',
+          url: '',
+          source_format: 'clash-classical',
+          enabled: true,
+          auto_refresh: false,
+          refresh_interval: 43200,
+          description: '',
+          tags: [],
+          raw_content: '',
+        };
+      }
+
+      function request(url, options = {}) {
+        return fetch(url, {
+          headers: { 'Content-Type': 'application/json' },
+          ...options,
+        }).then(async (res) => {
+          if (!res.ok) {
+            const text = await res.text();
+            throw new Error(text || ('请求失败: ' + res.status));
+          }
+          return res.json();
+        });
+      }
+
+      function get(url) { return request(url); }
+      function post(url, data) { return request(url, { method: 'POST', body: JSON.stringify(data) }); }
+      function put(url, data) { return request(url, { method: 'PUT', body: JSON.stringify(data) }); }
+      function del(url) { return request(url, { method: 'DELETE' }); }
+
+      function escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+          '&': '&amp;',
+          '<': '&lt;',
+          '>': '&gt;',
+          '"': '&quot;',
+          "'": '&#39;',
+        })[char]);
+      }
+
+      function addToast(message, type = 'ok') {
+        const id = Date.now() + Math.random();
+        state.toasts.push({ id, message, type });
+        renderToasts();
+        window.setTimeout(() => {
+          state.toasts = state.toasts.filter((item) => item.id !== id);
+          renderToasts();
+        }, 3200);
+      }
+
+      function renderToasts() {
+        toastRoot.innerHTML = state.toasts.map((toast) => `
+          <div class="pointer-events-auto flex min-w-[260px] max-w-[380px] items-center gap-[9px] rounded-rf-xl border px-[14px] py-[11px] text-[13.5px] font-medium shadow-rf3 ${toast.type === 'ok' ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-600'}">
+            ${toast.type === 'ok' ? icons.check : icons.alert}
+            <span>${escapeHtml(toast.message)}</span>
+          </div>
+        `).join('');
+      }
+
+      function formatDate(value) {
+        if (!value) return '从未同步';
+        try {
+          return new Date(value).toLocaleString('zh-CN', {
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+          });
+        } catch (_) {
+          return '未知';
+        }
+      }
+
+      function formatLabel(value) {
+        const item = FORMAT_OPTIONS.find((entry) => entry[0] === value);
+        return item ? item[1] : value;
+      }
+
+      function exportURL(name, target) {
+        return window.location.origin + '/rulesets/' + encodeURIComponent(name) + '?target=' + encodeURIComponent(target);
+      }
+
+      async function copyText(text, label) {
+        try {
+          await navigator.clipboard.writeText(text);
+          addToast(label + '已复制');
+        } catch (_) {
+          addToast('复制' + label + '失败', 'err');
+        }
+      }
+
+      function syncFormFromDom() {
+        const formEl = modalRoot.querySelector('form');
+        if (!formEl) return;
+        state.form.name = formEl.querySelector('[name="name"]')?.value || '';
+        state.form.url = formEl.querySelector('[name="url"]')?.value || '';
+        state.form.source_format = formEl.querySelector('[name="source_format"]')?.value || 'clash-classical';
+        state.form.enabled = !!formEl.querySelector('[name="enabled"]')?.checked;
+        state.form.auto_refresh = !!formEl.querySelector('[name="auto_refresh"]')?.checked;
+        state.form.refresh_interval = Number(formEl.querySelector('[name="refresh_interval"]')?.value || 0);
+        state.form.description = formEl.querySelector('[name="description"]')?.value || '';
+        state.form.raw_content = formEl.querySelector('[name="raw_content"]')?.value || '';
+      }
+
+      function useRemoteSource() {
+        return !!state.form.url;
+      }
+
+      function renderContent() {
+        if (state.loading) {
+          contentEl.innerHTML = `
+            <div class="rounded-rf-lg border border-rf-border bg-white px-5 py-[56px] text-center shadow-rf1">
+              <div class="mx-auto mb-3 h-6 w-6 animate-spin rounded-full border-2 border-[#18c865] border-t-transparent"></div>
+              <div class="text-[13px] text-rf-muted">加载中...</div>
+            </div>
+          `;
+          return;
+        }
+
+        if (state.items.length === 0) {
+          contentEl.innerHTML = `
+            <div class="rounded-rf-lg border border-rf-border bg-white shadow-rf1">
+              <div class="flex flex-col items-center justify-center px-5 py-14 text-center">
+                <div class="mb-3.5 flex h-12 w-12 items-center justify-center rounded-[14px] bg-slate-100 text-rf-muted">${icons.fileBig}</div>
+                <div class="mb-1.5 text-[15px] font-semibold text-rf-text">暂无规则源</div>
+                <div class="max-w-[320px] text-[13px] leading-6 text-rf-muted">创建一个规则源后，就可以将第三方规则同步并转换成你自己的多客户端导出格式。</div>
+                <button type="button" data-action="create" class="mt-4 inline-flex items-center gap-1.5 rounded-rf border border-[#18c865] bg-[#18c865] px-3.5 py-[7px] text-[13.5px] font-medium text-white transition hover:border-[#15b25a] hover:bg-[#15b25a]">${icons.plus}新建规则源</button>
+              </div>
+            </div>
+          `;
+          return;
+        }
+
+        contentEl.innerHTML = state.items.map((item) => `
+          <article class="mb-2 flex flex-col gap-3 rounded-rf-lg border border-rf-border bg-white px-[18px] py-[14px] shadow-rf1 transition hover:shadow-rf2 lg:flex-row lg:items-start lg:justify-between">
+            <div class="min-w-0 flex-1">
+              <div class="flex flex-wrap items-center gap-[7px] text-[14.5px] font-semibold text-rf-text">
+                <span>${escapeHtml(item.name)}</span>
+                <span class="inline-flex items-center gap-1 rounded-full px-[7px] py-[2px] text-[11.5px] font-medium ${item.enabled ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}"><span class="h-[5px] w-[5px] shrink-0 rounded-full ${item.enabled ? 'bg-green-600' : 'bg-red-500'}"></span>${item.enabled ? '启用' : '禁用'}</span>
+                <span class="inline-flex items-center gap-1 rounded-full bg-blue-100 px-[7px] py-[2px] text-[11.5px] font-medium text-blue-600"><span class="h-[5px] w-[5px] shrink-0 rounded-full bg-blue-500"></span>${escapeHtml(formatLabel(item.source_format))}</span>
+              </div>
+              ${item.description ? `<div class="mt-1 text-[12.5px] leading-[1.5] text-rf-muted">${escapeHtml(item.description)}</div>` : ''}
+              <div class="mt-[7px] flex flex-wrap items-center gap-3 text-xs text-rf-subtle">
+                ${item.url ? `<span class="flex items-center gap-[3px] break-all font-mono [&_svg]:h-[11px] [&_svg]:w-[11px] [&_svg]:shrink-0">${icons.linkMini}${escapeHtml(item.url)}</span>` : `<span class="flex items-center gap-[3px] [&_svg]:h-[11px] [&_svg]:w-[11px] [&_svg]:shrink-0">${icons.fileMini}手动维护规则</span>`}
+                <span class="flex items-center gap-[3px] [&_svg]:h-[11px] [&_svg]:w-[11px] [&_svg]:shrink-0">${icons.listMini}规则数：${item.rule_count || 0}</span>
+                <span class="flex items-center gap-[3px] [&_svg]:h-[11px] [&_svg]:w-[11px] [&_svg]:shrink-0">${icons.clockMini}上次同步：${escapeHtml(formatDate(item.last_synced_at))}</span>
+                ${item.url ? `<span class="flex items-center gap-[3px] [&_svg]:h-[11px] [&_svg]:w-[11px] [&_svg]:shrink-0">${icons.refreshMini}${item.auto_refresh ? '自动刷新 / ' + item.refresh_interval + 's' : '手动同步'}</span>` : ''}
+              </div>
+              ${item.last_sync_error ? `<div class="mt-2 text-[12.5px] text-red-500">最近错误：${escapeHtml(item.last_sync_error)}</div>` : ''}
+              <div class="mt-2.5 flex flex-wrap gap-2">
+                <button type="button" data-action="copy-export" data-id="${item.id}" data-target="sing-box" class="inline-flex items-center gap-1.5 rounded-rf border border-rf-border bg-white px-3 py-[6px] text-[12.5px] font-medium text-rf-text transition hover:bg-slate-50">复制 sing-box 地址</button>
+                <button type="button" data-action="copy-export" data-id="${item.id}" data-target="surge" class="inline-flex items-center gap-1.5 rounded-rf border border-rf-border bg-white px-3 py-[6px] text-[12.5px] font-medium text-rf-text transition hover:bg-slate-50">复制 Surge 地址</button>
+                <button type="button" data-action="copy-export" data-id="${item.id}" data-target="clash-classical" class="inline-flex items-center gap-1.5 rounded-rf border border-rf-border bg-white px-3 py-[6px] text-[12.5px] font-medium text-rf-text transition hover:bg-slate-50">复制 Clash 地址</button>
+              </div>
+            </div>
+            <div class="flex shrink-0 items-center justify-end gap-[3px]">
+              <button type="button" data-action="sync" data-id="${item.id}" class="inline-flex items-center rounded-md border-none bg-transparent p-1.5 text-rf-muted transition hover:bg-green-50 hover:text-[#18c865] disabled:cursor-not-allowed disabled:opacity-50" title="手动同步" ${state.syncingId === item.id ? 'disabled' : ''}>
+                ${state.syncingId === item.id ? '<span class="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent"></span>' : icons.sync}
+              </button>
+              <button type="button" data-action="edit" data-id="${item.id}" class="inline-flex items-center rounded-md border-none bg-transparent p-1.5 text-rf-muted transition hover:bg-blue-50 hover:text-blue-500" title="编辑规则源">${icons.edit}</button>
+              <button type="button" data-action="delete" data-id="${item.id}" class="inline-flex items-center rounded-md border-none bg-transparent p-1.5 text-rf-muted transition hover:bg-red-50 hover:text-red-500" title="删除规则源">${icons.trash}</button>
+            </div>
+          </article>
+        `).join('');
+      }
+
+      function renderModal() {
+        if (!state.showModal) {
+          modalRoot.innerHTML = '';
+          return;
+        }
+
+        modalRoot.innerHTML = `
+          <div class="fixed inset-0 z-[200] flex items-center justify-center bg-black/45 p-5 backdrop-blur-[3px]">
+            <div class="max-h-[90vh] w-full max-w-[620px] overflow-y-auto rounded-rf-xl bg-white shadow-rf3">
+              <div class="sticky top-0 z-[1] flex items-center justify-between border-b border-rf-border bg-white px-[22px] py-[18px]">
+                <span class="text-base font-semibold text-rf-text">${state.editItem ? '编辑规则源' : '新建规则源'}</span>
+                <button type="button" data-action="close-modal" class="inline-flex items-center rounded-md border-none bg-transparent p-1.5 text-rf-muted transition hover:bg-slate-100 hover:text-rf-text">${icons.close}</button>
+              </div>
+              <form id="rule-source-form">
+                <div class="space-y-[14px] px-[22px] py-[22px]">
+                  <div class="grid gap-[14px] md:grid-cols-2">
+                    <div>
+                      <label class="mb-[5px] block text-[12.5px] font-medium text-rf-text">名称</label>
+                      <input name="name" type="text" value="${escapeHtml(state.form.name)}" placeholder="ai_ai" class="w-full rounded-rf border border-rf-border bg-white px-[11px] py-[8px] text-[13.5px] text-rf-text outline-none transition focus:border-[#18c865] focus:ring-4 focus:ring-[rgba(24,200,101,0.1)]">
+                    </div>
+                    <div>
+                      <label class="mb-[5px] block text-[12.5px] font-medium text-rf-text">源格式</label>
+                      <select name="source_format" class="w-full rounded-rf border border-rf-border bg-white px-[11px] py-[8px] text-[13.5px] text-rf-text outline-none transition focus:border-[#18c865] focus:ring-4 focus:ring-[rgba(24,200,101,0.1)]">
+                        ${FORMAT_OPTIONS.map((item) => `<option value="${item[0]}" ${state.form.source_format === item[0] ? 'selected' : ''}>${item[1]}</option>`).join('')}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label class="mb-[5px] block text-[12.5px] font-medium text-rf-text">规则源类型</label>
+                    <div class="mt-1.5 flex flex-wrap gap-[10px]">
+                      <label class="inline-flex cursor-pointer items-center gap-[6px] text-[13px] text-rf-text">
+                        <input type="radio" name="rule_source_type" value="remote" ${useRemoteSource() ? 'checked' : ''} class="accent-[#18c865]">
+                        <span>远程 URL</span>
+                      </label>
+                      <label class="inline-flex cursor-pointer items-center gap-[6px] text-[13px] text-rf-text">
+                        <input type="radio" name="rule_source_type" value="manual" ${useRemoteSource() ? '' : 'checked'} class="accent-[#18c865]">
+                        <span>手动输入</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  ${useRemoteSource() ? `
+                    <div>
+                      <label class="mb-[5px] block text-[12.5px] font-medium text-rf-text">URL</label>
+                      <input name="url" type="text" value="${escapeHtml(state.form.url)}" placeholder="https://example.com/rules.list" class="w-full rounded-rf border border-rf-border bg-white px-[11px] py-[8px] font-mono text-[13.5px] text-rf-text outline-none transition focus:border-[#18c865] focus:ring-4 focus:ring-[rgba(24,200,101,0.1)]">
+                    </div>
+                  ` : `
+                    <div>
+                      <label class="mb-[5px] block text-[12.5px] font-medium text-rf-text">规则内容</label>
+                      <textarea name="raw_content" rows="10" placeholder="请输入规则内容，每行一条（支持注释行以 # 或 // 开头）" class="min-h-[200px] w-full resize-y rounded-rf border border-rf-border bg-white px-[11px] py-[8px] font-mono text-[13px] leading-[1.5] text-rf-text outline-none transition focus:border-[#18c865] focus:ring-4 focus:ring-[rgba(24,200,101,0.1)]">${escapeHtml(state.form.raw_content)}</textarea>
+                    </div>
+                  `}
+
+                  <div class="grid gap-[14px] md:grid-cols-2">
+                    <label class="flex items-center gap-3 rounded-rf border border-rf-border bg-slate-50 px-3 py-[10px] text-[13px] text-rf-text">
+                      <input name="enabled" type="checkbox" ${state.form.enabled ? 'checked' : ''} class="h-4 w-4 cursor-pointer accent-[#18c865]">
+                      <span>启用</span>
+                    </label>
+                    <label class="flex items-center gap-3 rounded-rf border border-rf-border bg-slate-50 px-3 py-[10px] text-[13px] text-rf-text">
+                      <input name="auto_refresh" type="checkbox" ${state.form.auto_refresh ? 'checked' : ''} class="h-4 w-4 cursor-pointer accent-[#18c865]">
+                      <span>自动刷新</span>
+                    </label>
+                  </div>
+
+                  <div>
+                    <label class="mb-[5px] block text-[12.5px] font-medium text-rf-text">刷新间隔 <span class="ml-1 text-[11px] font-normal text-rf-muted">秒</span></label>
+                    <input name="refresh_interval" type="number" min="60" value="${escapeHtml(state.form.refresh_interval)}" class="w-full rounded-rf border border-rf-border bg-white px-[11px] py-[8px] text-[13.5px] text-rf-text outline-none transition focus:border-[#18c865] focus:ring-4 focus:ring-[rgba(24,200,101,0.1)]">
+                  </div>
+
+                  <div>
+                    <label class="mb-[5px] block text-[12.5px] font-medium text-rf-text">描述 <span class="ml-1 text-[11px] font-normal text-rf-muted">可选</span></label>
+                    <textarea name="description" rows="4" placeholder="简要描述这个规则源的用途..." class="min-h-[96px] w-full resize-y rounded-rf border border-rf-border bg-white px-[11px] py-[8px] text-[13.5px] leading-[1.5] text-rf-text outline-none transition focus:border-[#18c865] focus:ring-4 focus:ring-[rgba(24,200,101,0.1)]">${escapeHtml(state.form.description)}</textarea>
+                  </div>
+                </div>
+                <div class="flex justify-end gap-2 rounded-b-rf-xl border-t border-rf-border bg-slate-50 px-[22px] py-[14px]">
+                  <button type="button" data-action="close-modal" class="inline-flex items-center gap-1.5 rounded-rf border border-rf-border bg-white px-3.5 py-[7px] text-[13.5px] font-medium text-rf-text transition hover:bg-slate-50">取消</button>
+                  <button type="submit" class="inline-flex items-center gap-1.5 rounded-rf border border-[#18c865] bg-[#18c865] px-3.5 py-[7px] text-[13.5px] font-medium text-white transition hover:border-[#15b25a] hover:bg-[#15b25a] disabled:cursor-not-allowed disabled:opacity-60" ${state.saving ? 'disabled' : ''}>
+                    ${state.saving ? '<span class="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent"></span>' : ''}
+                    ${state.saving ? '保存中...' : (state.editItem ? '保存更改' : '创建规则源')}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        `;
+      }
+
+      function renderDeleteDialog() {
+        if (!state.deleteTarget) {
+          deleteRoot.innerHTML = '';
+          return;
+        }
+
+        deleteRoot.innerHTML = `
+          <div class="fixed inset-0 z-[220] flex items-center justify-center bg-black/45 p-5 backdrop-blur-[3px]">
+            <div class="w-full max-w-[420px] rounded-rf-xl bg-white shadow-rf3">
+              <div class="border-b border-rf-border px-5 py-4">
+                <div class="text-[16px] font-semibold text-rf-text">删除规则源</div>
+              </div>
+              <div class="px-5 py-4 text-[13.5px] leading-6 text-rf-muted">
+                确定要删除规则源「<span class="font-medium text-rf-text">${escapeHtml(state.deleteTarget.name)}</span>」吗？此操作不会自动修改依赖它的模板引用。
+              </div>
+              <div class="flex justify-end gap-2 rounded-b-rf-xl border-t border-rf-border bg-slate-50 px-5 py-3.5">
+                <button type="button" data-action="close-delete" class="inline-flex items-center gap-1.5 rounded-rf border border-rf-border bg-white px-3.5 py-[7px] text-[13.5px] font-medium text-rf-text transition hover:bg-slate-50">取消</button>
+                <button type="button" data-action="confirm-delete" class="inline-flex items-center gap-1.5 rounded-rf border border-red-500 bg-red-500 px-3.5 py-[7px] text-[13.5px] font-medium text-white transition hover:border-red-600 hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-60" ${state.deleting ? 'disabled' : ''}>
+                  ${state.deleting ? '<span class="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent"></span>' : ''}
+                  ${state.deleting ? '删除中...' : '确认删除'}
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      async function loadItems(options = {}) {
+        try {
+          const data = await get('/api/rule-sources');
+          state.items = data.data || [];
+          state.loading = false;
+          renderContent();
+          if (!options.silent) addToast('规则源列表已刷新');
+        } catch (err) {
+          state.loading = false;
+          renderContent();
+          addToast('加载规则源失败：' + err.message, 'err');
+        }
+      }
+
+      function openCreate() {
+        state.editItem = null;
+        state.form = defaultForm();
+        state.showModal = true;
+        renderModal();
+      }
+
+      function openEdit(item) {
+        state.editItem = item;
+        state.form = {
+          name: item.name || '',
+          url: item.url || '',
+          source_format: item.source_format || 'clash-classical',
+          enabled: item.enabled !== false,
+          auto_refresh: !!item.auto_refresh,
+          refresh_interval: item.refresh_interval || 43200,
+          description: item.description || '',
+          tags: item.tags || [],
+          raw_content: item.raw_content || '',
+        };
+        state.showModal = true;
+        renderModal();
+      }
+
+      function closeModal() {
+        state.showModal = false;
+        state.editItem = null;
+        state.form = defaultForm();
+        state.saving = false;
+        modalRoot.innerHTML = '';
+      }
+
+      function openDelete(item) {
+        state.deleteTarget = item;
+        state.deleting = false;
+        renderDeleteDialog();
+      }
+
+      function closeDelete() {
+        state.deleteTarget = null;
+        state.deleting = false;
+        deleteRoot.innerHTML = '';
+      }
+
+      async function handleSave() {
+        syncFormFromDom();
+        if (!state.form.name.trim()) {
+          addToast('规则源名称不能为空', 'err');
+          return;
+        }
+        if (state.form.url.trim() && !state.form.raw_content.trim() && !/^https?:\/\//.test(state.form.url.trim())) {
+          addToast('URL 格式无效，请以 http:// 或 https:// 开头', 'err');
+          return;
+        }
+        if (!state.form.url.trim() && !state.form.raw_content.trim()) {
+          addToast('请提供远程 URL 或手动输入规则内容', 'err');
+          return;
+        }
+
+        const payload = {
+          name: state.form.name.trim(),
+          url: state.form.url.trim(),
+          source_format: state.form.source_format,
+          enabled: state.form.enabled,
+          auto_refresh: state.form.auto_refresh,
+          refresh_interval: Number(state.form.refresh_interval || 0),
+          description: state.form.description.trim(),
+          tags: state.form.tags || [],
+          raw_content: state.form.raw_content,
+        };
+
+        state.saving = true;
+        renderModal();
+        try {
+          if (state.editItem) {
+            await put('/api/rule-sources/' + state.editItem.id, payload);
+            addToast('规则源已更新');
+          } else {
+            await post('/api/rule-sources', payload);
+            addToast('规则源已创建');
+          }
+          closeModal();
+          await loadItems({ silent: true });
+        } catch (err) {
+          state.saving = false;
+          renderModal();
+          addToast('保存失败：' + err.message, 'err');
+        }
+      }
+
+      async function handleSync(item) {
+        state.syncingId = item.id;
+        renderContent();
+        try {
+          const res = await post('/api/rule-sources/' + item.id + '/sync', {});
+          addToast('同步完成，共 ' + ((res.data && res.data.rule_count) || 0) + ' 条规则');
+          await loadItems({ silent: true });
+        } catch (err) {
+          state.syncingId = null;
+          renderContent();
+          addToast('同步失败：' + err.message, 'err');
+        } finally {
+          state.syncingId = null;
+          renderContent();
+        }
+      }
+
+      async function handleDelete() {
+        if (!state.deleteTarget) return;
+        state.deleting = true;
+        renderDeleteDialog();
+        try {
+          await del('/api/rule-sources/' + state.deleteTarget.id);
+          addToast('规则源 "' + state.deleteTarget.name + '" 已删除');
+          closeDelete();
+          await loadItems({ silent: true });
+        } catch (err) {
+          state.deleting = false;
+          renderDeleteDialog();
+          addToast('删除失败：' + err.message, 'err');
+        }
+      }
+
+      root.addEventListener('click', async (event) => {
+        const target = event.target.closest('[data-action]');
+        if (!target) return;
+        const action = target.dataset.action;
+        const id = Number(target.dataset.id);
+        const item = state.items.find((entry) => entry.id === id);
+
+        if (action === 'refresh') await loadItems();
+        if (action === 'create') openCreate();
+        if (action === 'edit' && item) openEdit(item);
+        if (action === 'delete' && item) openDelete(item);
+        if (action === 'sync' && item) await handleSync(item);
+        if (action === 'copy-export' && item) {
+          await copyText(exportURL(item.name, target.dataset.target), target.dataset.target + ' 导出地址');
+        }
+      });
+
+      modalRoot.addEventListener('click', (event) => {
+        const overlay = event.target;
+        if (overlay === modalRoot.firstElementChild) {
+          closeModal();
+          return;
+        }
+        const target = event.target.closest('[data-action]');
+        if (target && target.dataset.action === 'close-modal') closeModal();
+      });
+
+      modalRoot.addEventListener('change', (event) => {
+        if (event.target.name === 'rule_source_type') {
+          syncFormFromDom();
+          if (event.target.value === 'remote') {
+            state.form.url = state.form.url || 'https://';
+            state.form.raw_content = '';
+          } else {
+            state.form.url = '';
+          }
+          renderModal();
+        }
+      });
+
+      modalRoot.addEventListener('submit', (event) => {
+        if (event.target.id !== 'rule-source-form') return;
+        event.preventDefault();
+        handleSave();
+      });
+
+      deleteRoot.addEventListener('click', (event) => {
+        const overlay = event.target;
+        if (overlay === deleteRoot.firstElementChild) {
+          closeDelete();
+          return;
+        }
+        const target = event.target.closest('[data-action]');
+        if (!target) return;
+        if (target.dataset.action === 'close-delete') closeDelete();
+        if (target.dataset.action === 'confirm-delete') handleDelete();
+      });
+
+      const icons = {
+        plus: '<svg class="h-[14px] w-[14px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>',
+        check: '<svg class="h-[15px] w-[15px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>',
+        alert: '<svg class="h-[15px] w-[15px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"></path><path d="M12 17h.01"></path><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path></svg>',
+        close: '<svg class="h-[15px] w-[15px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>',
+        sync: '<svg class="h-[15px] w-[15px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"></path><path d="M3 12a9 9 0 0 1 15.55-6.36L21 8"></path><path d="M3 22v-6h6"></path><path d="M21 12a9 9 0 0 1-15.55 6.36L3 16"></path></svg>',
+        edit: '<svg class="h-[15px] w-[15px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"></path></svg>',
+        trash: '<svg class="h-[15px] w-[15px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14H6L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M9 6V4h6v2"></path></svg>',
+        linkMini: '<svg class="h-[11px] w-[11px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l2.12-2.12a5 5 0 0 0-7.07-7.07L11.5 5.44"></path><path d="M14 11a5 5 0 0 0-7.54-.54L4.34 12.58a5 5 0 0 0 7.07 7.07l1.06-1.06"></path></svg>',
+        fileMini: '<svg class="h-[11px] w-[11px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>',
+        listMini: '<svg class="h-[11px] w-[11px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>',
+        clockMini: '<svg class="h-[11px] w-[11px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>',
+        refreshMini: '<svg class="h-[11px] w-[11px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"></path><path d="M3 12a9 9 0 0 1 15.55-6.36L21 8"></path><path d="M3 22v-6h6"></path><path d="M21 12a9 9 0 0 1-15.55 6.36L3 16"></path></svg>',
+        fileBig: '<svg class="h-[22px] w-[22px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>',
+      };
+
+      renderToasts();
+      renderContent();
+      loadItems({ silent: true });
+    })();
+  </script>

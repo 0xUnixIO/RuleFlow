@@ -1,0 +1,57 @@
+kind: pipeline
+type: kubernetes
+name: ci/cd
+
+clone:
+  disable: true
+
+steps:
+  - name: clone
+    image: zot.ooxo.cc/nmtz/drone-github-clone
+    settings:
+      SSH_KEY:
+        from_secret: ssh_key
+
+  - name: build
+    image: zot.ooxo.cc/golang:1.24.0-alpine
+    depends_on: [clone]
+    commands:
+      - apk add --no-cache make
+      - make build
+
+  - name: build_docker
+    image: zot.ooxo.cc/plugins/kaniko:latest
+    pull: if-not-exists
+    depends_on:
+      - build
+    settings:
+      registry: zot.ooxo.cc
+      username:
+        from_secret: nexus_docker_username
+      password:
+        from_secret: nexus_docker_password
+      repo: zot.ooxo.cc/ruleflow
+      tags:
+        - ${DRONE_COMMIT_SHA:0:8}
+        - latest
+
+  - name: deploy
+    image: zot.ooxo.cc/appleboy/drone-ssh
+    depends_on:
+      - build_docker
+    settings:
+      host:
+        from_secret: k8s_host
+      username:
+        from_secret: k8s_username
+      key:
+        from_secret: k8s_key
+      port: 22
+      command_timeout: 3m
+      script:
+        - kubectl apply -f https://git.ooxo.cc/k8s/yaml/raw/branch/main/ruleflow.yaml
+        - kubectl set image deployment/ruleflow ruleflow=zot.ooxo.cc/ruleflow:${DRONE_COMMIT_SHA:0:8}
+
+trigger:
+  branch:
+    - main

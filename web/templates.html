@@ -1,0 +1,896 @@
+<section id="templates-page" class="space-y-6">
+    <header class="flex justify-end">
+      <div class="flex flex-wrap items-center gap-2">
+        <button type="button" data-action="create" class="inline-flex items-center gap-1.5 rounded-rf border border-[#18c865] bg-[#18c865] px-3.5 py-[7px] text-[13.5px] font-medium leading-[1.2] text-white transition hover:border-[#15b25a] hover:bg-[#15b25a]">
+          <svg class="h-[14px] w-[14px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          新建模板
+        </button>
+      </div>
+    </header>
+
+    <div id="templates-content"></div>
+    <div id="templates-modal-root"></div>
+    <div id="templates-delete-root"></div>
+    <div id="templates-toast-root" class="pointer-events-none fixed bottom-[18px] left-[18px] z-[9999] flex flex-col gap-2"></div>
+  </section>
+
+  <script>
+    (() => {
+      const root = document.getElementById('templates-page');
+      if (!root) return;
+
+      const contentEl = document.getElementById('templates-content');
+      const modalRoot = document.getElementById('templates-modal-root');
+      const deleteRoot = document.getElementById('templates-delete-root');
+      const toastRoot = document.getElementById('templates-toast-root');
+
+      const TARGET_OPTIONS = [
+        { value: 'clash-mihomo', label: 'Clash Mihomo', tone: 'blue' },
+        { value: 'stash', label: 'Stash', tone: 'purple' },
+        { value: 'surge', label: 'Surge', tone: 'orange' },
+        { value: 'sing-box', label: 'sing-box', tone: 'cyan' },
+        { value: 'loon', label: 'Loon', tone: 'cyan' },
+        { value: 'shadowrocket', label: 'Shadowrocket', tone: 'cyan' },
+      ];
+
+      const warningCategoryMeta = [
+        { key: 'terminal', label: '兜底问题' },
+        { key: 'duplicate', label: '重复规则' },
+        { key: 'order', label: '顺序风险' },
+        { key: 'shadowing', label: '覆盖风险' },
+        { key: 'ruleset', label: 'Ruleset 展开失败' },
+        { key: 'other', label: '其他' },
+      ];
+
+      const state = {
+        templates: [],
+        loading: true,
+        showModal: false,
+        editItem: null,
+        deleteTarget: null,
+        form: defaultForm(),
+        saving: false,
+        checking: false,
+        formatting: false,
+        deleting: false,
+        showAdvanced: false,
+        validationResult: null,
+        validationFilter: '',
+        editorReady: false,
+        editorContent: '',
+        autoEditHandled: false,
+        toasts: [],
+      };
+
+      let monacoEditor = null;
+      let monacoReadyPromise = null;
+      let yamlReadyPromise = null;
+      let monacoModelUpdating = false;
+      const MONACO_BASE_URL = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs';
+      const YAML_BASE_URL = 'https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js';
+
+      function defaultForm() {
+        return { name: '', target: 'clash-mihomo', description: '', content: '', is_public: false };
+      }
+
+      function request(url, options = {}) {
+        return fetch(url, {
+          headers: { 'Content-Type': 'application/json' },
+          ...options,
+        }).then(async (res) => {
+          if (!res.ok) {
+            const text = await res.text();
+            throw new Error(text || ('请求失败: ' + res.status));
+          }
+          return res.json();
+        });
+      }
+
+      function get(url) { return request(url); }
+      function post(url, data) { return request(url, { method: 'POST', body: JSON.stringify(data) }); }
+      function put(url, data) { return request(url, { method: 'PUT', body: JSON.stringify(data) }); }
+      function del(url) { return request(url, { method: 'DELETE' }); }
+
+      function escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+          '&': '&amp;',
+          '<': '&lt;',
+          '>': '&gt;',
+          '"': '&quot;',
+          "'": '&#39;',
+        })[char]);
+      }
+
+      function addToast(message, type = 'ok') {
+        const id = Date.now() + Math.random();
+        state.toasts.push({ id, message, type });
+        renderToasts();
+        window.setTimeout(() => {
+          state.toasts = state.toasts.filter((item) => item.id !== id);
+          renderToasts();
+        }, 3200);
+      }
+
+      function renderToasts() {
+        toastRoot.innerHTML = state.toasts.map((toast) => `
+          <div class="pointer-events-auto flex min-w-[260px] max-w-[380px] items-center gap-[9px] rounded-rf-xl border px-[14px] py-[11px] text-[13.5px] font-medium shadow-rf3 ${toast.type === 'ok' ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-600'}">
+            ${toast.type === 'ok' ? icons.check : icons.alert}
+            <span>${escapeHtml(toast.message)}</span>
+          </div>
+        `).join('');
+      }
+
+      function targetMeta(target) {
+        return TARGET_OPTIONS.find((item) => item.value === target) || { label: target, tone: 'gray' };
+      }
+
+      function toneBadge(tone, text) {
+        const toneClass = {
+          blue: 'bg-blue-100 text-blue-600',
+          purple: 'bg-violet-100 text-violet-700',
+          orange: 'bg-orange-100 text-orange-600',
+          cyan: 'bg-cyan-100 text-cyan-700',
+          gray: 'bg-slate-100 text-slate-600',
+        }[tone] || 'bg-slate-100 text-slate-600';
+        const dotClass = {
+          blue: 'bg-blue-500',
+          purple: 'bg-violet-500',
+          orange: 'bg-orange-500',
+          cyan: 'bg-cyan-500',
+          gray: 'bg-slate-500',
+        }[tone] || 'bg-slate-500';
+        return `<span class="inline-flex items-center gap-1 rounded-full px-[7px] py-[2px] text-[11.5px] font-medium ${toneClass}"><span class="h-[5px] w-[5px] shrink-0 rounded-full ${dotClass}"></span>${escapeHtml(text)}</span>`;
+      }
+
+      function fmtDate(value) {
+        if (!value) return '—';
+        try {
+          return new Date(value).toLocaleString('zh-CN', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+          });
+        } catch (_) {
+          return value;
+        }
+      }
+
+      function builtinTemplateURL(target) {
+        if (target === 'surge') return '/rules/surge.conf';
+        if (target === 'sing-box') return '/rules/sing-box.json.template';
+        return '/rules/clash.yaml';
+      }
+
+      function builtinTemplateLabel(target) {
+        if (target === 'surge') return 'INI';
+        if (target === 'sing-box') return 'JSON';
+        return 'YAML';
+      }
+
+      function editorLanguage(target) {
+        if (target === 'sing-box') return 'json';
+        if (target === 'surge') return 'ini';
+        return 'yaml';
+      }
+
+      async function loadDefaultContent(target) {
+        try {
+          const res = await fetch(builtinTemplateURL(target));
+          if (!res.ok) return '';
+          const text = await res.text();
+          const contentType = res.headers.get('content-type') || '';
+          if (contentType.includes('text/html') || /^\s*<!doctype html/i.test(text) || /^\s*<html/i.test(text)) {
+            throw new Error('内置模板响应格式不正确');
+          }
+          return text;
+        } catch (_) {
+          return '';
+        }
+      }
+
+      function warningMatchesCategory(warning, category) {
+        switch (category) {
+          case 'terminal':
+            return warning.includes('兜底规则') || warning.includes('缺少兜底规则');
+          case 'duplicate':
+            return warning.includes('重复规则') || warning.includes('重复：');
+          case 'order':
+            return warning.includes('顺序风险');
+          case 'shadowing':
+            return warning.includes('覆盖');
+          case 'ruleset':
+            return warning.includes('ruleset 无法展开');
+          case 'other':
+            return !warningMatchesCategory(warning, 'terminal')
+              && !warningMatchesCategory(warning, 'duplicate')
+              && !warningMatchesCategory(warning, 'order')
+              && !warningMatchesCategory(warning, 'shadowing')
+              && !warningMatchesCategory(warning, 'ruleset');
+          default:
+            return true;
+        }
+      }
+
+      function filteredWarnings() {
+        const warnings = Array.isArray(state.validationResult?.warnings) ? state.validationResult.warnings : [];
+        if (!state.validationFilter) return warnings;
+        return warnings.filter((item) => warningMatchesCategory(item, state.validationFilter));
+      }
+
+      function syncFormFromDom() {
+        const formEl = modalRoot.querySelector('#template-form');
+        if (!formEl) return;
+        state.form.name = modalRoot.querySelector('[name="name"][form="template-form"]')?.value || '';
+        state.form.target = modalRoot.querySelector('[name="target"][form="template-form"]')?.value || 'clash-mihomo';
+        state.form.description = modalRoot.querySelector('[name="description"][form="template-form"]')?.value || '';
+        const isPublicEl = modalRoot.querySelector('[name="is_public"][form="template-form"]');
+        if (isPublicEl) state.form.is_public = isPublicEl.checked;
+      }
+
+      function updateEditQuery() {
+        const url = new URL(window.location.href);
+        if (state.editItem) {
+          url.searchParams.set('edit', String(state.editItem.id || state.editItem.name));
+        } else {
+          url.searchParams.delete('edit');
+        }
+        if (!state.editItem) url.searchParams.delete('return_to');
+        window.history.replaceState({}, '', url.pathname + url.search + url.hash);
+      }
+
+      function renderContent() {
+        if (state.loading) {
+          contentEl.innerHTML = `
+            <div class="rounded-rf-lg border border-rf-border bg-white px-5 py-[56px] text-center shadow-rf1">
+              <div class="mx-auto mb-3 h-6 w-6 animate-spin rounded-full border-2 border-[#18c865] border-t-transparent"></div>
+              <div class="text-[13px] text-rf-muted">加载中...</div>
+            </div>
+          `;
+          return;
+        }
+
+        if (state.templates.length === 0) {
+          contentEl.innerHTML = `
+            <div class="rounded-rf-lg border border-rf-border bg-white shadow-rf1">
+              <div class="flex flex-col items-center justify-center px-5 py-14 text-center">
+                <div class="mb-3.5 flex h-12 w-12 items-center justify-center rounded-[14px] bg-slate-100 text-rf-muted">${icons.fileBig}</div>
+                <div class="mb-1.5 text-[15px] font-semibold text-rf-text">暂无规则模板</div>
+                <div class="max-w-[280px] text-[13px] leading-6 text-rf-muted">创建一个规则模板，用于生成 Clash / Surge 等客户端配置。</div>
+                <button type="button" data-action="create" class="mt-4 inline-flex items-center gap-1.5 rounded-rf border border-[#18c865] bg-[#18c865] px-3.5 py-[7px] text-[13.5px] font-medium text-white transition hover:border-[#15b25a] hover:bg-[#15b25a]">${icons.plus}新建模板</button>
+              </div>
+            </div>
+          `;
+          return;
+        }
+
+        contentEl.innerHTML = state.templates.map((tpl) => {
+          const meta = targetMeta(tpl.target);
+          return `
+            <article class="mb-2 flex flex-col gap-3 rounded-rf-lg border border-rf-border bg-white px-[18px] py-[14px] shadow-rf1 transition hover:shadow-rf2 lg:flex-row lg:items-start lg:justify-between">
+              <div class="min-w-0 flex-1">
+                <div class="flex flex-wrap items-center gap-[7px] text-[14.5px] font-semibold text-rf-text">
+                  <span>${escapeHtml(tpl.name)}</span>
+                  ${toneBadge(meta.tone, meta.label)}
+                  ${tpl.is_public ? '<span class="inline-flex items-center gap-[3px] rounded border border-emerald-200 bg-emerald-50 px-[7px] py-[1px] text-[11px] font-medium text-emerald-700">公开</span>' : ''}
+                </div>
+                ${tpl.description ? `<div class="mt-1 text-[12.5px] leading-[1.5] text-rf-muted">${escapeHtml(tpl.description)}</div>` : ''}
+                <div class="mt-[7px] flex flex-wrap items-center gap-3 text-xs text-rf-subtle">
+                  <span class="flex items-center gap-[3px] [&_svg]:h-[11px] [&_svg]:w-[11px] [&_svg]:shrink-0">${icons.clockMini}${escapeHtml(fmtDate(tpl.created_at))}</span>
+                </div>
+              </div>
+              <div class="flex shrink-0 items-center justify-end gap-[3px]">
+                <button type="button" data-action="toggle-public" data-id="${tpl.id}" class="inline-flex items-center rounded-md border-none bg-transparent p-1.5 transition ${tpl.is_public ? 'text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700' : 'text-rf-muted hover:bg-slate-100 hover:text-rf-text'}" title="${tpl.is_public ? '取消公开' : '设为公开'}">${icons.globe}</button>
+                <button type="button" data-action="edit" data-id="${tpl.id}" class="inline-flex items-center rounded-md border-none bg-transparent p-1.5 text-rf-muted transition hover:bg-blue-50 hover:text-blue-500" title="编辑模板">${icons.edit}</button>
+                <button type="button" data-action="delete" data-id="${tpl.id}" class="inline-flex items-center rounded-md border-none bg-transparent p-1.5 text-rf-muted transition hover:bg-red-50 hover:text-red-500" title="删除模板">${icons.trash}</button>
+              </div>
+            </article>
+          `;
+        }).join('');
+      }
+
+      function renderValidationReport() {
+        if (!state.validationResult) return '';
+        const warnings = filteredWarnings();
+        return `
+          <div class="${state.validationResult?.warnings?.length ? 'border-orange-200 bg-orange-50' : 'border-green-200 bg-green-50'} mt-[10px] rounded-rf border px-3 py-3">
+            <div class="mb-2 flex flex-wrap items-baseline justify-between gap-3">
+              <div class="text-[13px] font-semibold text-rf-text">检查报告</div>
+              <div class="text-[12px] text-rf-muted">${escapeHtml(state.validationResult.message || '模板检查通过')}</div>
+            </div>
+            ${state.validationResult.warning_summary && Object.keys(state.validationResult.warning_summary).length > 0 ? `
+              <div class="mb-[10px] flex flex-wrap gap-2">
+                ${warningCategoryMeta.map((item) => {
+                  const count = state.validationResult.warning_summary[item.key];
+                  if (!count) return '';
+                  const active = state.validationFilter === item.key;
+                  return `<button type="button" data-action="filter-warning" data-key="${item.key}" class="${active ? 'border-green-300 bg-green-100 text-green-800' : 'border-rf-border bg-white text-rf-muted hover:border-[#18c865] hover:text-[#18c865]'} inline-flex items-center rounded-full border px-2 py-1 text-[11.5px] transition">${item.label} ${count}</button>`;
+                }).join('')}
+              </div>
+            ` : ''}
+            ${Array.isArray(state.validationResult.warnings) && state.validationResult.warnings.length > 0 ? `
+              <div class="max-h-[220px] overflow-auto border-t border-dashed border-rf-border pt-2">
+                ${warnings.slice(0, 50).map((item, idx) => `<div class="py-[2px] text-[12px] leading-[1.55] text-rf-text">${idx + 1}. ${escapeHtml(item)}</div>`).join('')}
+                ${state.validationFilter ? `<div class="mt-1 text-[12px] text-rf-muted">当前筛选：${escapeHtml(warningCategoryMeta.find((item) => item.key === state.validationFilter)?.label || state.validationFilter)}</div>` : ''}
+                ${warnings.length > 50 ? `<div class="mt-1 text-[12px] text-rf-muted">其余 ${warnings.length - 50} 条未展开显示</div>` : ''}
+                ${warnings.length === 0 ? `<div class="mt-1 text-[12px] text-rf-muted">当前分类下没有可展示的告警。</div>` : ''}
+              </div>
+            ` : `<div class="text-[12px] text-rf-muted">未发现规则问题。</div>`}
+          </div>
+        `;
+      }
+
+      function renderModal() {
+        if (!state.showModal) {
+          modalRoot.innerHTML = '';
+          destroyEditor();
+          return;
+        }
+
+        if (modalRoot.innerHTML.trim()) {
+          destroyEditor();
+        }
+
+        const params = new URLSearchParams(window.location.search);
+        const hasReturnTo = params.get('return_to');
+
+        modalRoot.innerHTML = `
+          <div class="fixed inset-0 z-[200] bg-[rgba(17,24,39,.36)] p-0 backdrop-blur-[6px]">
+            <div class="flex h-full w-full flex-col overflow-hidden bg-white">
+              <div class="sticky top-0 z-[1] flex items-start justify-between gap-3 border-b border-rf-border bg-white px-4 py-[10px]">
+                <div class="min-w-0 flex-1">
+                  <div class="flex min-w-0 flex-col gap-3 xl:grid xl:grid-cols-[minmax(180px,1.2fr)_minmax(140px,.7fr)_auto] xl:items-center xl:gap-[10px]">
+                    <div class="grid min-w-0 gap-[10px] md:grid-cols-2">
+                      <div>
+                        <label class="mb-[3px] block text-[11px] font-medium text-rf-muted">模板名称</label>
+                        <input name="name" form="template-form" type="text" value="${escapeHtml(state.form.name)}" placeholder="my-template" class="w-full rounded-rf border border-rf-border bg-white px-[10px] py-[6px] text-[12.5px] text-rf-text outline-none transition focus:border-[#18c865] focus:ring-4 focus:ring-[rgba(24,200,101,0.1)]">
+                      </div>
+                      <div>
+                        <label class="mb-[3px] block text-[11px] font-medium text-rf-muted">目标客户端</label>
+                        <select name="target" form="template-form" class="w-full rounded-rf border border-rf-border bg-white px-[10px] py-[6px] text-[12.5px] text-rf-text outline-none transition focus:border-[#18c865] focus:ring-4 focus:ring-[rgba(24,200,101,0.1)]">
+                          ${TARGET_OPTIONS.map((opt) => `<option value="${opt.value}" ${state.form.target === opt.value ? 'selected' : ''}>${opt.label}</option>`).join('')}
+                        </select>
+                      </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      ${hasReturnTo ? `<button type="button" data-action="close-modal" class="border-none bg-transparent p-0 text-[12px] text-blue-500 transition hover:underline">返回订阅配置</button>` : ''}
+                      <button type="button" data-action="toggle-advanced" class="border-none bg-transparent p-0 text-[12px] text-blue-500 transition hover:underline">${state.showAdvanced ? '收起更多设置' : '更多设置'}</button>
+                    </div>
+                    <div class="flex flex-wrap items-center justify-end gap-2">
+                      <button type="button" data-action="close-modal" class="inline-flex items-center gap-1.5 rounded-rf border border-rf-border bg-white px-3 py-[6px] text-[12.5px] font-medium text-rf-text transition hover:bg-slate-50">取消</button>
+                      <button type="button" data-action="format" class="inline-flex items-center gap-1.5 rounded-rf border border-rf-border bg-white px-3 py-[6px] text-[12.5px] font-medium text-rf-text transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60" ${state.checking || state.saving || state.formatting ? 'disabled' : ''}>
+                        ${state.formatting ? '<span class="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent"></span>' : ''}
+                        ${state.formatting ? '格式化中...' : '格式化'}
+                      </button>
+                      <button type="button" data-action="validate" class="inline-flex items-center gap-1.5 rounded-rf border border-rf-border bg-white px-3 py-[6px] text-[12.5px] font-medium text-rf-text transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60" ${state.checking || state.saving ? 'disabled' : ''}>
+                        ${state.checking ? '<span class="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent"></span>' : ''}
+                        ${state.checking ? '检查中...' : '检查模版'}
+                      </button>
+                      <button type="button" data-action="save" class="inline-flex items-center gap-1.5 rounded-rf border border-[#18c865] bg-[#18c865] px-3 py-[6px] text-[12.5px] font-medium text-white transition hover:border-[#15b25a] hover:bg-[#15b25a] disabled:cursor-not-allowed disabled:opacity-60" ${state.saving ? 'disabled' : ''}>
+                        ${state.saving ? '<span class="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent"></span>' : ''}
+                        ${state.saving ? '保存中...' : (state.editItem ? '保存更改' : '创建模板')}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <button type="button" data-action="close-modal" class="inline-flex items-center rounded-md border-none bg-transparent p-1.5 text-rf-muted transition hover:bg-slate-100 hover:text-rf-text">${icons.close}</button>
+              </div>
+
+              <form id="template-form" class="contents"></form>
+
+              <div class="flex min-h-0 flex-1 flex-col overflow-hidden bg-slate-50 px-4 pb-4 pt-[10px]">
+                ${state.showAdvanced ? `
+                  <div class="mb-[10px] rounded-rf border border-rf-border bg-white px-3 py-3 flex flex-col gap-3">
+                    <div>
+                      <label class="mb-[5px] block text-[12.5px] font-medium text-rf-text">描述 <span class="ml-1 text-[11px] font-normal text-rf-muted">可选</span></label>
+                      <textarea name="description" form="template-form" rows="2" placeholder="简要描述此模板的用途或适用场景..." class="min-h-[36px] w-full resize-none rounded-rf border border-rf-border bg-white px-[10px] py-[6px] text-[12.5px] leading-[1.35] text-rf-text outline-none transition focus:border-[#18c865] focus:ring-4 focus:ring-[rgba(24,200,101,0.1)]">${escapeHtml(state.form.description)}</textarea>
+                    </div>
+                    <label class="flex cursor-pointer items-center gap-2.5 select-none">
+                      <input type="checkbox" name="is_public" form="template-form" ${state.form.is_public ? 'checked' : ''} class="h-[15px] w-[15px] rounded accent-[#18c865] cursor-pointer">
+                      <span class="text-[12.5px] font-medium text-rf-text">在订阅转换页公开此模板</span>
+                      <span class="text-[12px] text-rf-muted">开启后用户可在 /converter 页面选择此模板</span>
+                    </label>
+                  </div>
+                ` : ''}
+                <div class="flex min-h-0 flex-1 flex-col">
+                  <div class="mb-[5px] text-[12.5px] font-medium text-rf-text">模板内容 <span class="ml-1 text-[11px] font-normal text-rf-muted">${builtinTemplateLabel(state.form.target)} 格式</span></div>
+                  <div id="template-editor" class="min-h-0 flex-1 overflow-hidden rounded-rf border border-rf-border bg-white"></div>
+                  ${renderValidationReport()}
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+
+        ensureEditor();
+      }
+
+      function renderDeleteDialog() {
+        if (!state.deleteTarget) {
+          deleteRoot.innerHTML = '';
+          return;
+        }
+
+        deleteRoot.innerHTML = `
+          <div class="fixed inset-0 z-[220] flex items-center justify-center bg-black/45 p-5 backdrop-blur-[3px]">
+            <div class="w-full max-w-[420px] rounded-rf-xl bg-white shadow-rf3">
+              <div class="border-b border-rf-border px-5 py-4">
+                <div class="text-[16px] font-semibold text-rf-text">确认删除</div>
+              </div>
+              <div class="px-5 py-4 text-[13.5px] leading-6 text-rf-muted">
+                确定要删除模板「<span class="font-medium text-rf-text">${escapeHtml(state.deleteTarget.name)}</span>」吗？
+                <div class="mt-2 text-[13px]">此操作不可撤销，使用该模板的配置策略将改为使用内置模板。</div>
+              </div>
+              <div class="flex justify-end gap-2 rounded-b-rf-xl border-t border-rf-border bg-slate-50 px-5 py-3.5">
+                <button type="button" data-action="close-delete" class="inline-flex items-center gap-1.5 rounded-rf border border-rf-border bg-white px-3.5 py-[7px] text-[13.5px] font-medium text-rf-text transition hover:bg-slate-50">取消</button>
+                <button type="button" data-action="confirm-delete" class="inline-flex items-center gap-1.5 rounded-rf border border-red-500 bg-red-500 px-3.5 py-[7px] text-[13.5px] font-medium text-white transition hover:border-red-600 hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-60" ${state.deleting ? 'disabled' : ''}>
+                  ${state.deleting ? '<span class="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent"></span>' : ''}
+                  ${state.deleting ? '删除中...' : '确认删除'}
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      function loadScript(src, options = {}) {
+        return new Promise((resolve, reject) => {
+          const existing = document.querySelector(`script[src="${src}"]`);
+          if (existing) {
+            if (existing.dataset.loaded === 'true') {
+              resolve();
+              return;
+            }
+            existing.addEventListener('load', () => resolve(), { once: true });
+            existing.addEventListener('error', () => reject(new Error('脚本加载失败: ' + src)), { once: true });
+            return;
+          }
+
+          const script = document.createElement('script');
+          script.src = src;
+          script.async = true;
+          let restoreAMD = null;
+          if (options.disableAMD) {
+            const previousDefine = window.define;
+            restoreAMD = () => {
+              if (typeof previousDefine === 'undefined') {
+                delete window.define;
+              } else {
+                window.define = previousDefine;
+              }
+            };
+            try {
+              window.define = undefined;
+            } catch (_) {
+              restoreAMD = null;
+            }
+          }
+          script.addEventListener('load', () => {
+            if (restoreAMD) restoreAMD();
+            script.dataset.loaded = 'true';
+            resolve();
+          }, { once: true });
+          script.addEventListener('error', () => {
+            if (restoreAMD) restoreAMD();
+            reject(new Error('脚本加载失败: ' + src));
+          }, { once: true });
+          document.head.appendChild(script);
+        });
+      }
+
+      function ensureMonacoReady() {
+        if (!monacoReadyPromise) {
+          monacoReadyPromise = loadScript(`${MONACO_BASE_URL}/loader.min.js`).then(() => new Promise((resolve, reject) => {
+            const amdRequire = window.require;
+            if (!amdRequire || typeof amdRequire.config !== 'function') {
+              reject(new Error('Monaco Loader 未正确初始化'));
+              return;
+            }
+            amdRequire.config({ paths: { vs: MONACO_BASE_URL } });
+            amdRequire(['vs/editor/editor.main'], () => resolve(window.monaco), (err) => reject(err || new Error('Monaco 加载失败')));
+          })).catch((err) => {
+            monacoReadyPromise = null;
+            throw err;
+          });
+        }
+        return monacoReadyPromise;
+      }
+
+      function ensureYAMLReady() {
+        if (!yamlReadyPromise) {
+          yamlReadyPromise = loadScript(YAML_BASE_URL, { disableAMD: true }).then(() => {
+            if (!window.jsyaml) {
+              throw new Error('YAML 格式化库未正确初始化');
+            }
+            return window.jsyaml;
+          }).catch((err) => {
+            yamlReadyPromise = null;
+            throw err;
+          });
+        }
+        return yamlReadyPromise;
+      }
+
+      async function ensureEditor() {
+        const container = document.getElementById('template-editor');
+        if (!container) return;
+        let monaco;
+        try {
+          monaco = await ensureMonacoReady();
+        } catch (err) {
+          container.innerHTML = `<div class="flex h-full min-h-[280px] items-center justify-center px-4 text-center text-[13px] text-red-500">${escapeHtml(err.message || '编辑器加载失败')}</div>`;
+          addToast('编辑器初始化失败：' + (err.message || '未知错误'), 'err');
+          return;
+        }
+        if (!document.getElementById('template-editor')) return;
+
+        if (monacoEditor) {
+          monacoEditor.layout();
+          const model = monacoEditor.getModel();
+          if (model) {
+            monaco.editor.setModelLanguage(model, editorLanguage(state.form.target));
+          }
+          const current = monacoEditor.getValue();
+          if (current !== state.editorContent) {
+            monacoModelUpdating = true;
+            monacoEditor.setValue(state.editorContent || '');
+            monacoModelUpdating = false;
+          }
+          return;
+        }
+
+        monacoEditor = monaco.editor.create(container, {
+          value: state.editorContent || '',
+          language: editorLanguage(state.form.target),
+          theme: 'vs-dark',
+          automaticLayout: true,
+          minimap: { enabled: false },
+          fontSize: 13,
+          lineNumbers: 'on',
+          scrollBeyondLastLine: false,
+          wordWrap: 'on',
+          tabSize: 2,
+        });
+
+        monacoEditor.onDidChangeModelContent(() => {
+          if (!monacoModelUpdating) {
+            state.editorContent = monacoEditor.getValue();
+          }
+        });
+      }
+
+      function formatSurgeContent(content) {
+        const lines = String(content || '').replace(/\r\n/g, '\n').split('\n');
+        const normalized = [];
+        let previousBlank = false;
+        for (const rawLine of lines) {
+          const line = rawLine.replace(/[ \t]+$/g, '');
+          const isBlank = line.trim() === '';
+          if (isBlank) {
+            if (!previousBlank) normalized.push('');
+            previousBlank = true;
+            continue;
+          }
+          normalized.push(line);
+          previousBlank = false;
+        }
+
+        const result = normalized.join('\n').trim();
+        return result ? (result + '\n') : '';
+      }
+
+      async function formatEditorContent() {
+        const content = state.editorContent || '';
+        if (!content.trim()) {
+          addToast('模板内容为空，无需格式化', 'err');
+          return;
+        }
+
+        state.formatting = true;
+        try {
+          let formatted = content;
+          if (state.form.target === 'sing-box') {
+            formatted = JSON.stringify(JSON.parse(content), null, 2) + '\n';
+          } else if (state.form.target === 'surge') {
+            formatted = formatSurgeContent(content);
+          } else {
+            const jsyaml = await ensureYAMLReady();
+            formatted = jsyaml.dump(jsyaml.load(content), {
+              indent: 2,
+              lineWidth: -1,
+              noRefs: true,
+              sortKeys: false,
+            });
+          }
+
+          if (!formatted.trim() && content.trim()) {
+            throw new Error('格式化结果为空，已中止应用');
+          }
+
+          state.editorContent = formatted;
+          if (monacoEditor && monacoEditor.getValue() !== formatted) {
+            monacoModelUpdating = true;
+            monacoEditor.setValue(formatted);
+            monacoModelUpdating = false;
+          }
+          addToast('模板已格式化');
+        } catch (err) {
+          addToast('格式化失败：' + (err.message || '未知错误'), 'err');
+        } finally {
+          state.formatting = false;
+        }
+      }
+
+      function destroyEditor() {
+        if (monacoEditor) {
+          monacoEditor.dispose();
+          monacoEditor = null;
+        }
+      }
+
+      async function loadTemplates() {
+        try {
+          const data = await get('/api/templates');
+          state.templates = data.data || [];
+        } catch (err) {
+          addToast('加载模板失败：' + err.message, 'err');
+        } finally {
+          state.loading = false;
+          renderContent();
+          maybeAutoOpenEdit();
+        }
+      }
+
+      function maybeAutoOpenEdit() {
+        if (state.loading || state.autoEditHandled) return;
+        const params = new URLSearchParams(window.location.search);
+        const editValue = params.get('edit');
+        if (!editValue) {
+          state.autoEditHandled = true;
+          return;
+        }
+        const tpl = state.templates.find((item) => String(item.id) === editValue || item.name === editValue);
+        if (tpl) {
+          openEdit(tpl);
+        } else {
+          addToast('未找到要编辑的模板：' + editValue, 'err');
+        }
+        state.autoEditHandled = true;
+      }
+
+      async function openCreate() {
+        state.editItem = null;
+        state.form = defaultForm();
+        state.editorContent = await loadDefaultContent(state.form.target);
+        state.form.content = state.editorContent;
+        state.validationResult = null;
+        state.validationFilter = '';
+        state.showAdvanced = false;
+        state.showModal = true;
+        updateEditQuery();
+        renderModal();
+      }
+
+      function openEdit(tpl) {
+        state.editItem = tpl;
+        state.form = {
+          name: tpl.name || '',
+          target: tpl.target || 'clash-mihomo',
+          description: tpl.description || '',
+          content: tpl.content || '',
+          is_public: tpl.is_public || false,
+        };
+        state.editorContent = tpl.content || '';
+        state.validationResult = null;
+        state.validationFilter = '';
+        state.showAdvanced = false;
+        state.showModal = true;
+        updateEditQuery();
+        renderModal();
+      }
+
+      function closeModal() {
+        const url = new URL(window.location.href);
+        const returnTo = url.searchParams.get('return_to');
+        if (state.editItem && returnTo) {
+          window.location.href = returnTo;
+          return;
+        }
+
+        state.showModal = false;
+        state.editItem = null;
+        state.form = defaultForm();
+        state.editorContent = '';
+        state.showAdvanced = false;
+        state.validationResult = null;
+        state.validationFilter = '';
+        renderModal();
+
+        url.searchParams.delete('edit');
+        url.searchParams.delete('return_to');
+        window.history.replaceState({}, '', url.pathname + url.search + url.hash);
+      }
+
+      function openDelete(tpl) {
+        state.deleteTarget = tpl;
+        state.deleting = false;
+        renderDeleteDialog();
+      }
+
+      function closeDelete() {
+        state.deleteTarget = null;
+        state.deleting = false;
+        deleteRoot.innerHTML = '';
+      }
+
+      async function handleSave() {
+        syncFormFromDom();
+        if (!state.form.name.trim()) {
+          addToast('模板名称不能为空', 'err');
+          return;
+        }
+
+        const payload = {
+          ...state.form,
+          content: state.editorContent,
+        };
+
+        state.saving = true;
+        renderModal();
+        try {
+          if (state.editItem) {
+            await put('/api/templates/' + state.editItem.id, payload);
+            state.editItem = state.editItem ? { ...state.editItem, ...payload } : state.editItem;
+            addToast('模板已更新');
+          } else {
+            await post('/api/templates', payload);
+            addToast('模板已创建');
+            closeModal();
+          }
+          await loadTemplates();
+        } catch (err) {
+          state.saving = false;
+          renderModal();
+          addToast('保存失败：' + err.message, 'err');
+        } finally {
+          state.saving = false;
+          if (state.showModal) renderModal();
+        }
+      }
+
+      async function handleValidate() {
+        if (!state.editorContent.trim()) {
+          addToast('模板内容不能为空', 'err');
+          return;
+        }
+        syncFormFromDom();
+        state.checking = true;
+        renderModal();
+        try {
+          const res = await post('/api/templates/validate', {
+            target: state.form.target,
+            content: state.editorContent,
+          });
+          state.validationResult = res?.data || {};
+          state.validationFilter = '';
+          if (Array.isArray(state.validationResult.warnings) && state.validationResult.warnings.length > 0) {
+            addToast((state.validationResult.message || '模板检查完成') + '，请查看下方检查报告', 'err');
+          } else {
+            addToast(state.validationResult.message || '模板检查通过');
+          }
+        } catch (err) {
+          state.validationResult = null;
+          state.validationFilter = '';
+          addToast('检查失败：' + err.message, 'err');
+        } finally {
+          state.checking = false;
+          renderModal();
+        }
+      }
+
+      async function handleTogglePublic(tpl) {
+        try {
+          await put('/api/templates/' + tpl.id, { ...tpl, is_public: !tpl.is_public });
+          addToast(tpl.is_public ? '已取消公开' : '已设为公开');
+          await loadTemplates();
+        } catch (err) {
+          addToast('操作失败：' + err.message, 'err');
+        }
+      }
+
+      async function handleDelete() {
+        if (!state.deleteTarget) return;
+        state.deleting = true;
+        renderDeleteDialog();
+        try {
+          await del('/api/templates/' + state.deleteTarget.id);
+          addToast('模板 "' + state.deleteTarget.name + '" 已删除');
+          closeDelete();
+          await loadTemplates();
+        } catch (err) {
+          state.deleting = false;
+          renderDeleteDialog();
+          addToast('删除失败：' + err.message, 'err');
+        }
+      }
+
+      root.addEventListener('click', (event) => {
+        const target = event.target.closest('[data-action]');
+        if (!target) return;
+        const action = target.dataset.action;
+        const id = Number(target.dataset.id);
+        const tpl = state.templates.find((item) => item.id === id);
+
+        if (action === 'create') openCreate();
+        if (action === 'toggle-public' && tpl) handleTogglePublic(tpl);
+        if (action === 'edit' && tpl) openEdit(tpl);
+        if (action === 'delete' && tpl) openDelete(tpl);
+      });
+
+      modalRoot.addEventListener('click', async (event) => {
+        const overlay = event.target;
+        if (overlay === modalRoot.firstElementChild) {
+          closeModal();
+          return;
+        }
+
+        const target = event.target.closest('[data-action]');
+        if (!target) return;
+        if (target.dataset.action === 'close-modal') closeModal();
+        if (target.dataset.action === 'toggle-advanced') {
+          syncFormFromDom();
+          state.showAdvanced = !state.showAdvanced;
+          renderModal();
+        }
+        if (target.dataset.action === 'format') await formatEditorContent();
+        if (target.dataset.action === 'save') await handleSave();
+        if (target.dataset.action === 'validate') await handleValidate();
+        if (target.dataset.action === 'filter-warning') {
+          const key = target.dataset.key;
+          state.validationFilter = state.validationFilter === key ? '' : key;
+          renderModal();
+        }
+      });
+
+      modalRoot.addEventListener('change', async (event) => {
+        if (event.target.name === 'target') {
+          const previousTarget = state.form.target;
+          syncFormFromDom();
+          if (!state.editItem && previousTarget !== state.form.target && !state.editorContent.trim()) {
+            state.editorContent = await loadDefaultContent(state.form.target);
+          }
+          renderModal();
+        }
+      });
+
+      deleteRoot.addEventListener('click', (event) => {
+        const overlay = event.target;
+        if (overlay === deleteRoot.firstElementChild) {
+          closeDelete();
+          return;
+        }
+        const target = event.target.closest('[data-action]');
+        if (!target) return;
+        if (target.dataset.action === 'close-delete') closeDelete();
+        if (target.dataset.action === 'confirm-delete') handleDelete();
+      });
+
+      const icons = {
+        plus: '<svg class="h-[14px] w-[14px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>',
+        check: '<svg class="h-[15px] w-[15px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>',
+        alert: '<svg class="h-[15px] w-[15px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"></path><path d="M12 17h.01"></path><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path></svg>',
+        close: '<svg class="h-[15px] w-[15px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>',
+        edit: '<svg class="h-[15px] w-[15px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"></path></svg>',
+        trash: '<svg class="h-[15px] w-[15px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14H6L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M9 6V4h6v2"></path></svg>',
+        clockMini: '<svg class="h-[11px] w-[11px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>',
+        globe: '<svg class="h-[15px] w-[15px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>',
+        fileBig: '<svg class="h-[22px] w-[22px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>',
+      };
+
+      renderToasts();
+      renderContent();
+      renderModal();
+      loadTemplates();
+    })();
+  </script>

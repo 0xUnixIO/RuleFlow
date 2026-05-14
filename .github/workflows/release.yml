@@ -1,0 +1,37 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: 构建前端
+        run: cd web-ui && bun install --frozen-lockfile && bun run build
+
+      - name: 构建二进制
+        run: |
+          GOFLAGS=-buildvcs=false go build -trimpath -ldflags="-s -w -X main.version=${{ github.ref_name }}" -o ruleflow-linux-amd64 .
+          GOFLAGS=-buildvcs=false GOARCH=arm64 go build -trimpath -ldflags="-s -w -X main.version=${{ github.ref_name }}" -o ruleflow-linux-arm64 .
+
+      - name: 发布 GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ruleflow-linux-amd64
+            ruleflow-linux-arm64

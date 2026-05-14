@@ -1,0 +1,853 @@
+<section id="nodes-page" class="flex h-[calc(100vh-56px)] min-h-0 flex-col gap-4 overflow-hidden">
+    <header class="flex justify-end">
+      <div class="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          data-action="create-wireguard"
+          class="inline-flex items-center gap-1.5 rounded-rf border border-rf-border bg-white px-3.5 py-[7px] text-[13.5px] font-medium leading-[1.2] text-rf-text transition hover:bg-slate-50"
+        >
+          添加 WireGuard
+        </button>
+        <button
+          type="button"
+          data-action="create-share"
+          class="inline-flex items-center gap-1.5 rounded-rf border border-[#18c865] bg-[#18c865] px-3.5 py-[7px] text-[13.5px] font-medium leading-[1.2] text-white transition hover:border-[#15b25a] hover:bg-[#15b25a]"
+        >
+          <svg class="h-[14px] w-[14px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+          添加链接节点
+        </button>
+      </div>
+    </header>
+
+    <div id="nodes-content" class="min-h-0 flex-1"></div>
+    <div id="nodes-modal-root"></div>
+    <div id="nodes-delete-root"></div>
+    <div id="nodes-toast-root" class="pointer-events-none fixed bottom-[18px] left-[18px] z-[9999] flex flex-col gap-2"></div>
+  </section>
+
+  <script>
+    (() => {
+      const root = document.getElementById('nodes-page');
+      if (!root) return;
+
+      const contentEl = document.getElementById('nodes-content');
+      const modalRoot = document.getElementById('nodes-modal-root');
+      const deleteRoot = document.getElementById('nodes-delete-root');
+      const toastRoot = document.getElementById('nodes-toast-root');
+
+      const protocolLabel = {
+        trojan: 'TROJAN',
+        vmess: 'VMESS',
+        vless: 'VLESS',
+        ss: 'SS',
+        wireguard: 'WIREGUARD',
+        anytls: 'ANYTLS',
+        hysteria2: 'HYSTERIA2',
+        tuic: 'TUIC',
+      };
+
+      const protocolTone = {
+        trojan: 'green',
+        vmess: 'blue',
+        vless: 'purple',
+        ss: 'orange',
+        wireguard: 'gray',
+        anytls: 'blue',
+        hysteria2: 'pink',
+        tuic: 'cyan',
+      };
+
+      const state = {
+        nodes: [],
+        subscriptions: [],
+        stats: { total: 0, enabled: 0, by_source: {}, by_protocol: {} },
+        loading: true,
+        filter: { source: '', protocol: '', enabled: '' },
+        selectedIds: [],
+        modalMode: null,
+        editNode: null,
+        saving: false,
+        deleting: false,
+        deleteTarget: null,
+        form: defaultForm(),
+        configErr: '',
+        toasts: [],
+      };
+
+      function defaultForm() {
+        return {
+          name: '',
+          protocol: 'share',
+          shareUrl: '',
+          server: '',
+          port: 443,
+          configStr: '{}',
+          tags: '',
+          enabled: true,
+        };
+      }
+
+      function escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+          '&': '&amp;',
+          '<': '&lt;',
+          '>': '&gt;',
+          '"': '&quot;',
+          "'": '&#39;',
+        })[char]);
+      }
+
+      function request(url, options = {}) {
+        return fetch(url, {
+          headers: { 'Content-Type': 'application/json' },
+          ...options,
+        }).then(async (res) => {
+          if (!res.ok) {
+            const text = await res.text();
+            throw new Error(text || ('请求失败: ' + res.status));
+          }
+          return res.json();
+        });
+      }
+
+      function get(url) { return request(url); }
+      function post(url, data) { return request(url, { method: 'POST', body: JSON.stringify(data) }); }
+      function put(url, data) { return request(url, { method: 'PUT', body: JSON.stringify(data) }); }
+      function patch(url, data) { return request(url, { method: 'PATCH', body: JSON.stringify(data) }); }
+      function del(url) { return request(url, { method: 'DELETE' }); }
+
+      function addToast(message, type = 'ok') {
+        const id = Date.now() + Math.random();
+        state.toasts.push({ id, message, type });
+        renderToasts();
+        window.setTimeout(() => {
+          state.toasts = state.toasts.filter((item) => item.id !== id);
+          renderToasts();
+        }, 3200);
+      }
+
+      function renderToasts() {
+        toastRoot.innerHTML = state.toasts.map((toast) => `
+          <div class="pointer-events-auto flex min-w-[260px] max-w-[380px] items-center gap-[9px] rounded-rf-xl border px-[14px] py-[11px] text-[13.5px] font-medium shadow-rf3 ${toast.type === 'ok' ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-600'}">
+            ${toast.type === 'ok' ? icons.check : icons.alert}
+            <span>${escapeHtml(toast.message)}</span>
+          </div>
+        `).join('');
+      }
+
+      function badge(tone, text, withDot = false) {
+        const toneClass = {
+          green: 'bg-green-100 text-green-700',
+          blue: 'bg-blue-100 text-blue-600',
+          red: 'bg-red-100 text-red-600',
+          orange: 'bg-orange-100 text-orange-600',
+          purple: 'bg-violet-100 text-violet-700',
+          cyan: 'bg-cyan-100 text-cyan-700',
+          pink: 'bg-pink-100 text-pink-700',
+          gray: 'bg-slate-100 text-slate-600',
+        }[tone] || 'bg-slate-100 text-slate-600';
+        const dotClass = {
+          green: 'bg-green-600',
+          blue: 'bg-blue-500',
+          red: 'bg-red-500',
+          orange: 'bg-orange-500',
+          purple: 'bg-violet-500',
+          cyan: 'bg-cyan-500',
+          pink: 'bg-pink-500',
+          gray: 'bg-slate-500',
+        }[tone] || 'bg-slate-500';
+        return `
+          <span class="inline-flex items-center gap-1 rounded-full px-[7px] py-[2px] text-[11.5px] font-medium whitespace-nowrap ${toneClass}">
+            ${withDot ? `<span class="h-[5px] w-[5px] shrink-0 rounded-full ${dotClass}"></span>` : ''}
+            ${escapeHtml(text)}
+          </span>
+        `;
+      }
+
+      function numberValue(value) {
+        const n = Number(value);
+        return Number.isFinite(n) ? n : 0;
+      }
+
+      function sourceLabel(node) {
+        return node.source_id == null ? '手动添加' : (node.source_name || '订阅节点');
+      }
+
+      function generateNodeUrl(node) {
+        const cfg = node.config || {};
+        const name = encodeURIComponent(node.name || node.server || '');
+
+        switch (node.protocol) {
+          case 'ss': {
+            const cipher = cfg.cipher || 'aes-256-gcm';
+            const password = cfg.password || '';
+            // 使用标准 ss:// 格式：ss://BASE64(method:password)@server:port#name
+            const userinfo = btoa(unescape(encodeURIComponent(cipher + ':' + password)));
+            return `ss://${userinfo}@${node.server}:${node.port}#${name}`;
+          }
+          case 'trojan': {
+            const password = encodeURIComponent(cfg.password || '');
+            return `trojan://${password}@${node.server}:${node.port}#${name}`;
+          }
+          case 'vless': {
+            const uuid = cfg.uuid || '';
+            return `vless://${uuid}@${node.server}:${node.port}#${name}`;
+          }
+          case 'vmess': {
+            const vmessObj = {
+              v: '2', ps: node.name || '', add: node.server || '',
+              port: String(node.port || 443), id: cfg.uuid || '',
+              aid: '0', net: 'tcp', type: 'none', host: '', path: '', tls: '',
+            };
+            return `vmess://${btoa(unescape(encodeURIComponent(JSON.stringify(vmessObj))))}`;
+          }
+          case 'hysteria2': {
+            const password = encodeURIComponent(cfg.password || '');
+            return `hysteria2://${password}@${node.server}:${node.port}#${name}`;
+          }
+          case 'tuic': {
+            const uuid = cfg.uuid || '';
+            const password = encodeURIComponent(cfg.password || '');
+            return `tuic://${uuid}:${password}@${node.server}:${node.port}#${name}`;
+          }
+          case 'anytls': {
+            const password = encodeURIComponent(cfg.password || '');
+            return `anytls://${password}@${node.server}:${node.port}#${name}`;
+          }
+          default:
+            return null;
+        }
+      }
+
+      async function copyNodeUrl(node) {
+        const url = generateNodeUrl(node);
+        if (!url) {
+          addToast('该协议暂不支持导出链接（' + node.protocol + '）', 'err');
+          return;
+        }
+        try {
+          await navigator.clipboard.writeText(url);
+          addToast('节点链接已复制');
+        } catch (err) {
+          addToast('复制失败: ' + err.message, 'err');
+        }
+      }
+
+      function renderSourceOptions() {
+        const options = ['<option value="">所有来源</option>', `<option value="manual" ${state.filter.source === 'manual' ? 'selected' : ''}>手动添加</option>`];
+        state.subscriptions.forEach((sub) => {
+          options.push(`<option value="${sub.id}" ${String(state.filter.source) === String(sub.id) ? 'selected' : ''}>${escapeHtml(sub.name)}</option>`);
+        });
+        return options.join('');
+      }
+
+      function syncFormFromDom() {
+        const formEl = modalRoot.querySelector('form');
+        if (!formEl) return;
+        state.form.name = formEl.querySelector('[name="name"]')?.value || '';
+        state.form.protocol = formEl.querySelector('[name="protocol"]')?.value || 'share';
+        state.form.shareUrl = formEl.querySelector('[name="shareUrl"]')?.value || '';
+        state.form.server = formEl.querySelector('[name="server"]')?.value || '';
+        state.form.port = numberValue(formEl.querySelector('[name="port"]')?.value || 443);
+        state.form.configStr = formEl.querySelector('[name="configStr"]')?.value || '{}';
+        state.form.tags = formEl.querySelector('[name="tags"]')?.value || '';
+        state.form.enabled = !!formEl.querySelector('[name="enabled"]')?.checked;
+      }
+
+      function validateConfig(str) {
+        if (state.form.protocol !== 'wireguard') {
+          state.configErr = '';
+          return true;
+        }
+        try {
+          JSON.parse(str);
+          state.configErr = '';
+          return true;
+        } catch (err) {
+          state.configErr = 'JSON 格式无效: ' + err.message;
+          return false;
+        }
+      }
+
+      function renderContent() {
+        const manualCount = numberValue(state.stats.by_source?.manual);
+        const subCount = Math.max(numberValue(state.stats.total) - manualCount, 0);
+        const allSelected = state.nodes.length > 0 && state.selectedIds.length === state.nodes.length;
+        const someSelected = state.selectedIds.length > 0 && state.selectedIds.length < state.nodes.length;
+
+        contentEl.innerHTML = `
+          <div class="flex h-full min-h-0 flex-col gap-3">
+          <section class="grid gap-2 md:grid-cols-4">
+            <article class="rounded-rf border border-rf-border bg-white px-[14px] py-[10px] shadow-rf1">
+              <div class="text-[11px] font-medium text-rf-muted">总节点</div>
+              <div class="mt-1 text-[20px] font-bold leading-none tracking-[-0.3px] text-rf-text">${numberValue(state.stats.total)}</div>
+            </article>
+            <article class="rounded-rf border border-rf-border bg-white px-[14px] py-[10px] shadow-rf1">
+              <div class="text-[11px] font-medium text-rf-muted">已启用</div>
+              <div class="mt-1 text-[20px] font-bold leading-none tracking-[-0.3px] text-rf-text">${numberValue(state.stats.enabled)}</div>
+            </article>
+            <article class="rounded-rf border border-rf-border bg-white px-[14px] py-[10px] shadow-rf1">
+              <div class="text-[11px] font-medium text-rf-muted">手动添加</div>
+              <div class="mt-1 text-[20px] font-bold leading-none tracking-[-0.3px] text-rf-text">${manualCount}</div>
+            </article>
+            <article class="rounded-rf border border-rf-border bg-white px-[14px] py-[10px] shadow-rf1">
+              <div class="text-[11px] font-medium text-rf-muted">订阅节点</div>
+              <div class="mt-1 text-[20px] font-bold leading-none tracking-[-0.3px] text-rf-text">${subCount}</div>
+            </article>
+          </section>
+
+          <!-- 协议分布 -->
+          <section class="rounded-rf-lg border border-rf-border bg-white shadow-rf1 px-[14px] py-[10px]">
+            <div class="text-[11px] font-medium text-rf-muted mb-1.5">节点协议分布</div>
+            <div class="grid gap-2.5">
+              ${(() => {
+                const protocolItems = Object.entries(state.stats.by_protocol || {}).sort((a, b) => b[1] - a[1]);
+                const protocolMax = Math.max(...protocolItems.map(([, c]) => c), 1);
+                return protocolItems.map(([protocol, count]) => `
+                  <div class="grid grid-cols-[92px_1fr_44px] items-center gap-2.5">
+                    <div class="truncate text-xs font-medium text-rf-muted">${escapeHtml(protocolLabel[protocol] || protocol)}</div>
+                    <div class="h-2 bg-slate-200 rounded-full overflow-hidden">
+                      <div class="h-full rounded-full bg-emerald-500 transition-all duration-300" style="width: ${Math.max((count / protocolMax) * 100, 6)}%"></div>
+                    </div>
+                    <div class="text-right text-xs font-semibold text-rf-text">${count}</div>
+                  </div>
+                `).join('') || '<div class="text-[11px] text-rf-muted text-center py-2">暂无协议数据</div>';
+              })()}
+            </div>
+          </section>
+
+          <section class="flex flex-wrap items-center gap-2.5">
+            <select data-filter="source" class="min-w-[120px] rounded-rf border border-rf-border bg-white px-[11px] py-[8px] text-[13.5px] text-rf-text outline-none transition focus:border-[#18c865] focus:ring-4 focus:ring-[rgba(24,200,101,0.1)]">
+              ${renderSourceOptions()}
+            </select>
+            <select data-filter="protocol" class="min-w-[120px] rounded-rf border border-rf-border bg-white px-[11px] py-[8px] text-[13.5px] text-rf-text outline-none transition focus:border-[#18c865] focus:ring-4 focus:ring-[rgba(24,200,101,0.1)]">
+              <option value="">所有协议</option>
+              <option value="trojan" ${state.filter.protocol === 'trojan' ? 'selected' : ''}>Trojan</option>
+              <option value="vmess" ${state.filter.protocol === 'vmess' ? 'selected' : ''}>VMess</option>
+              <option value="vless" ${state.filter.protocol === 'vless' ? 'selected' : ''}>VLESS</option>
+              <option value="ss" ${state.filter.protocol === 'ss' ? 'selected' : ''}>Shadowsocks</option>
+              <option value="anytls" ${state.filter.protocol === 'anytls' ? 'selected' : ''}>AnyTLS</option>
+              <option value="hysteria2" ${state.filter.protocol === 'hysteria2' ? 'selected' : ''}>Hysteria2</option>
+              <option value="tuic" ${state.filter.protocol === 'tuic' ? 'selected' : ''}>TUIC</option>
+              <option value="wireguard" ${state.filter.protocol === 'wireguard' ? 'selected' : ''}>WireGuard</option>
+            </select>
+            <select data-filter="enabled" class="min-w-[120px] rounded-rf border border-rf-border bg-white px-[11px] py-[8px] text-[13.5px] text-rf-text outline-none transition focus:border-[#18c865] focus:ring-4 focus:ring-[rgba(24,200,101,0.1)]">
+              <option value="">所有状态</option>
+              <option value="true" ${state.filter.enabled === 'true' ? 'selected' : ''}>已启用</option>
+              <option value="false" ${state.filter.enabled === 'false' ? 'selected' : ''}>已禁用</option>
+            </select>
+          </section>
+
+          ${state.selectedIds.length > 0 ? `
+            <section class="flex flex-wrap items-center gap-[10px] rounded-rf border border-emerald-200 bg-emerald-50/90 px-4 py-3 text-[13px] font-medium text-emerald-700">
+              ${icons.batch}
+              <span>已选择 <strong>${state.selectedIds.length}</strong> 个节点</span>
+              <button type="button" data-action="batch-enable" class="inline-flex items-center rounded-rf border border-rf-border bg-white px-3 py-[5px] text-[12.5px] text-rf-text transition hover:bg-slate-50">批量启用</button>
+              <button type="button" data-action="batch-disable" class="inline-flex items-center rounded-rf border border-rf-border bg-white px-3 py-[5px] text-[12.5px] text-rf-text transition hover:bg-slate-50">批量禁用</button>
+              <button type="button" data-action="clear-selected" class="inline-flex items-center rounded-rf border border-transparent bg-transparent px-3 py-[5px] text-[12.5px] text-rf-muted transition hover:bg-white hover:text-rf-text">取消选择</button>
+            </section>
+          ` : ''}
+
+          <section class="min-h-0 flex-1 overflow-hidden rounded-rf-lg border border-rf-border bg-white shadow-rf1">
+            <div class="h-full overflow-auto">
+              <table class="min-w-full border-collapse">
+                <thead class="sticky top-0 z-10 bg-[rgba(248,250,252,0.92)] backdrop-blur-md">
+                  <tr>
+                    <th class="w-10 whitespace-nowrap border-b border-rf-border px-[14px] py-[9px] text-left text-[11.5px] font-semibold uppercase tracking-[0.05em] text-rf-muted">
+                      <input type="checkbox" data-action="toggle-all" ${allSelected ? 'checked' : ''} ${state.nodes.length === 0 ? 'disabled' : ''} ${someSelected ? 'data-indeterminate="true"' : ''} class="h-[15px] w-[15px] cursor-pointer accent-[#18c865]">
+                    </th>
+                    <th class="whitespace-nowrap border-b border-rf-border px-[14px] py-[9px] text-left text-[11.5px] font-semibold uppercase tracking-[0.05em] text-rf-muted">节点名称</th>
+                    <th class="whitespace-nowrap border-b border-rf-border px-[14px] py-[9px] text-left text-[11.5px] font-semibold uppercase tracking-[0.05em] text-rf-muted">协议</th>
+                    <th class="whitespace-nowrap border-b border-rf-border px-[14px] py-[9px] text-left text-[11.5px] font-semibold uppercase tracking-[0.05em] text-rf-muted">服务器</th>
+                    <th class="whitespace-nowrap border-b border-rf-border px-[14px] py-[9px] text-left text-[11.5px] font-semibold uppercase tracking-[0.05em] text-rf-muted">来源</th>
+                    <th class="whitespace-nowrap border-b border-rf-border px-[14px] py-[9px] text-left text-[11.5px] font-semibold uppercase tracking-[0.05em] text-rf-muted">状态</th>
+                    <th class="w-20 whitespace-nowrap border-b border-rf-border px-[14px] py-[9px] text-left text-[11.5px] font-semibold uppercase tracking-[0.05em] text-rf-muted">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${state.loading ? `
+                    <tr>
+                      <td colspan="7" class="px-5 py-[56px]">
+                        <div class="flex items-center justify-center">
+                          <span class="inline-block h-6 w-6 animate-spin rounded-full border-[3px] border-[#18c865] border-t-transparent"></span>
+                        </div>
+                      </td>
+                    </tr>
+                  ` : state.nodes.length === 0 ? `
+                    <tr>
+                      <td colspan="7" class="px-5 py-[56px]">
+                        <div class="flex flex-col items-center justify-center text-center">
+                          <div class="mb-[14px] flex h-12 w-12 items-center justify-center rounded-[14px] bg-slate-100 text-rf-muted">${icons.serverBig}</div>
+                          <div class="mb-1.5 text-[15px] font-semibold text-rf-text">${state.filter.source || state.filter.protocol || state.filter.enabled !== '' ? '没有符合条件的节点' : '暂无节点'}</div>
+                          <div class="max-w-[300px] text-[13px] leading-6 text-rf-muted">${state.filter.source || state.filter.protocol || state.filter.enabled !== '' ? '调整筛选条件后重试。' : '点击右上角添加节点。'}</div>
+                        </div>
+                      </td>
+                    </tr>
+                  ` : state.nodes.map((node) => `
+                    <tr class="transition hover:bg-[rgba(248,250,252,0.92)]">
+                      <td class="border-b border-rf-border px-[14px] py-[11px] align-middle last:border-b-0">
+                        <input type="checkbox" data-action="toggle-select" data-id="${node.id}" ${state.selectedIds.includes(node.id) ? 'checked' : ''} class="h-[15px] w-[15px] cursor-pointer accent-[#18c865]">
+                      </td>
+                      <td class="border-b border-rf-border px-[14px] py-[11px] align-middle last:border-b-0">
+                        <div class="text-[13.5px] font-semibold text-rf-text">${escapeHtml(node.name)}</div>
+                        ${node.tags && node.tags.length > 0 ? `
+                          <div class="mt-1 flex flex-wrap gap-1">
+                            ${node.tags.map((tag) => `<span class="inline-flex items-center gap-1 rounded-full bg-slate-100 px-[6px] py-[2px] text-[11px] font-medium text-slate-600">${escapeHtml(tag)}</span>`).join('')}
+                          </div>
+                        ` : ''}
+                      </td>
+                      <td class="border-b border-rf-border px-[14px] py-[11px] align-middle last:border-b-0">
+                        ${badge(protocolTone[node.protocol] || 'gray', protocolLabel[node.protocol] || (node.protocol || '-').toUpperCase())}
+                      </td>
+                      <td class="border-b border-rf-border px-[14px] py-[11px] align-middle font-mono text-[12.5px] text-rf-muted last:border-b-0">
+                        ${escapeHtml(node.server)}:${escapeHtml(node.port)}
+                      </td>
+                      <td class="border-b border-rf-border px-[14px] py-[11px] align-middle text-[13px] text-rf-muted last:border-b-0">
+                        ${escapeHtml(sourceLabel(node))}
+                      </td>
+                      <td class="border-b border-rf-border px-[14px] py-[11px] align-middle last:border-b-0">
+                        ${node.enabled ? badge('green', '启用', true) : badge('red', '禁用', true)}
+                      </td>
+                      <td class="border-b border-rf-border px-[14px] py-[11px] align-middle last:border-b-0">
+                        <div class="flex items-center gap-1">
+                          ${generateNodeUrl(node) !== null ? `<button type="button" data-action="copy-url" data-id="${node.id}" class="inline-flex items-center rounded-[12px] border-none bg-transparent p-2 text-rf-muted transition hover:bg-emerald-50 hover:text-emerald-600" title="复制节点链接">${icons.link}</button>` : ''}
+                          <button type="button" data-action="edit" data-id="${node.id}" class="inline-flex items-center rounded-[12px] border-none bg-transparent p-2 text-rf-muted transition hover:bg-blue-50 hover:text-blue-500" title="编辑节点">
+                            ${icons.edit}
+                          </button>
+                          <button type="button" data-action="delete" data-id="${node.id}" class="inline-flex items-center rounded-[12px] border-none bg-transparent p-2 text-rf-muted transition hover:bg-red-50 hover:text-red-500" title="删除节点">
+                            ${icons.trash}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </section>
+          </div>
+        `;
+
+        const toggleAll = contentEl.querySelector('[data-action="toggle-all"]');
+        if (toggleAll) toggleAll.indeterminate = someSelected;
+      }
+
+      function renderModal() {
+        if (!state.modalMode) {
+          modalRoot.innerHTML = '';
+          return;
+        }
+
+        const isWireGuard = state.form.protocol === 'wireguard';
+        const title = state.editNode ? '编辑节点' : (isWireGuard ? '添加 WireGuard 节点' : '添加链接节点');
+
+        modalRoot.innerHTML = `
+          <div class="fixed inset-0 z-[200] flex items-center justify-center bg-black/45 p-5 backdrop-blur-[3px]">
+            <div class="max-h-[90vh] w-full max-w-[680px] overflow-y-auto rounded-rf-xl bg-white shadow-rf3">
+              <div class="sticky top-0 z-[1] flex items-center justify-between border-b border-rf-border bg-white px-[22px] py-[18px]">
+                <span class="text-base font-semibold text-rf-text">${title}</span>
+                <button type="button" data-action="close-modal" class="inline-flex items-center rounded-md border-none bg-transparent p-1.5 text-rf-muted transition hover:bg-slate-100 hover:text-rf-text">${icons.close}</button>
+              </div>
+              <form id="node-form">
+                <div class="space-y-[14px] px-[22px] py-[22px]">
+                  <div class="grid gap-[14px] md:grid-cols-2">
+                    <div>
+                      <label class="mb-[5px] block text-[12.5px] font-medium text-rf-text">节点名称</label>
+                      <input name="name" type="text" required value="${escapeHtml(state.form.name)}" placeholder="我的节点" class="w-full rounded-rf border border-rf-border bg-white px-[11px] py-[8px] text-[13.5px] text-rf-text outline-none transition focus:border-[#18c865] focus:ring-4 focus:ring-[rgba(24,200,101,0.1)]">
+                    </div>
+                    <div>
+                      <label class="mb-[5px] block text-[12.5px] font-medium text-rf-text">添加方式</label>
+                      <input type="hidden" name="protocol" value="${escapeHtml(state.form.protocol)}">
+                      <div class="flex items-center rounded-rf border border-rf-border bg-slate-50 px-[11px] py-[8px] text-[13.5px] text-rf-muted">${isWireGuard ? 'WireGuard 专用表单' : '分享链接解析'}</div>
+                    </div>
+                  </div>
+
+                  ${isWireGuard ? `
+                    <div class="grid gap-[14px] md:grid-cols-2">
+                      <div>
+                        <label class="mb-[5px] block text-[12.5px] font-medium text-rf-text">服务器地址</label>
+                        <input name="server" type="text" required value="${escapeHtml(state.form.server)}" placeholder="example.com" class="w-full rounded-rf border border-rf-border bg-white px-[11px] py-[8px] text-[13.5px] text-rf-text outline-none transition focus:border-[#18c865] focus:ring-4 focus:ring-[rgba(24,200,101,0.1)]">
+                      </div>
+                      <div>
+                        <label class="mb-[5px] block text-[12.5px] font-medium text-rf-text">端口</label>
+                        <input name="port" type="number" min="1" max="65535" required value="${escapeHtml(state.form.port)}" placeholder="443" class="w-full rounded-rf border border-rf-border bg-white px-[11px] py-[8px] text-[13.5px] text-rf-text outline-none transition focus:border-[#18c865] focus:ring-4 focus:ring-[rgba(24,200,101,0.1)]">
+                      </div>
+                    </div>
+                    <div>
+                      <label class="mb-[5px] block text-[12.5px] font-medium text-rf-text">配置参数 <span class="ml-1 text-[11px] font-normal text-rf-muted">JSON 格式</span></label>
+                      <textarea name="configStr" rows="6" placeholder='{\n  "private_key": "...",\n  "peer_public_key": "..."\n}' class="min-h-[104px] w-full resize-y rounded-rf border border-rf-border bg-white px-[11px] py-[8px] font-mono text-[12.5px] leading-[1.5] text-rf-text outline-none transition focus:border-[#18c865] focus:ring-4 focus:ring-[rgba(24,200,101,0.1)]">${escapeHtml(state.form.configStr)}</textarea>
+                      <div data-role="config-error" class="mt-1 text-[11.5px] text-red-500 ${state.configErr ? '' : 'hidden'}">${escapeHtml(state.configErr)}</div>
+                    </div>
+                  ` : `
+                    <div>
+                      <label class="mb-[5px] block text-[12.5px] font-medium text-rf-text">分享链接 <span class="ml-1 text-[11px] font-normal text-rf-muted">${state.editNode ? '可直接修改链接中的地址、端口、密码等参数' : '支持 ss/vless/vmess/trojan/anytls/hysteria2/tuic'}</span></label>
+                      <textarea name="shareUrl" rows="4" ${state.editNode ? '' : 'required'} placeholder='ss://YWVzLTI1Ni1nY206...\nvless://700229f2-...\ntrojan://password@...' class="min-h-[88px] w-full resize-y rounded-rf border border-rf-border bg-white px-[11px] py-[8px] font-mono text-[12.5px] leading-[1.5] text-rf-text outline-none transition focus:border-[#18c865] focus:ring-4 focus:ring-[rgba(24,200,101,0.1)]">${escapeHtml(state.form.shareUrl)}</textarea>
+                      ${state.editNode ? `<div class="mt-1 text-[11.5px] text-rf-muted">留空则只更新名称/标签/启用状态</div>` : ''}
+                    </div>
+                  `}
+
+                  <div>
+                    <label class="mb-[5px] block text-[12.5px] font-medium text-rf-text">标签 <span class="ml-1 text-[11px] font-normal text-rf-muted">逗号分隔</span></label>
+                    <input name="tags" type="text" value="${escapeHtml(state.form.tags)}" placeholder="hk, premium, fast" class="w-full rounded-rf border border-rf-border bg-white px-[11px] py-[8px] text-[13.5px] text-rf-text outline-none transition focus:border-[#18c865] focus:ring-4 focus:ring-[rgba(24,200,101,0.1)]">
+                    <div class="mt-1 text-[11.5px] text-rf-muted">多个标签用逗号分隔，如：香港, 高速, 专线</div>
+                  </div>
+
+                  <label class="flex items-center gap-3 rounded-rf border border-rf-border bg-slate-50 px-3 py-[10px] text-[13px] text-rf-text">
+                    <input name="enabled" type="checkbox" ${state.form.enabled ? 'checked' : ''} class="h-4 w-4 cursor-pointer accent-[#18c865]">
+                    <span>启用此节点</span>
+                  </label>
+                </div>
+                <div class="flex justify-end gap-2 rounded-b-rf-xl border-t border-rf-border bg-slate-50 px-[22px] py-[14px]">
+                  <button type="button" data-action="close-modal" class="inline-flex items-center gap-1.5 rounded-rf border border-rf-border bg-white px-3.5 py-[7px] text-[13.5px] font-medium leading-[1.2] text-rf-text transition hover:bg-slate-50">取消</button>
+                  <button type="submit" data-role="submit-button" class="inline-flex items-center gap-1.5 rounded-rf border border-[#18c865] bg-[#18c865] px-3.5 py-[7px] text-[13.5px] font-medium leading-[1.2] text-white transition hover:border-[#15b25a] hover:bg-[#15b25a] disabled:cursor-not-allowed disabled:opacity-60" ${state.saving || !!state.configErr ? 'disabled' : ''}>
+                    ${state.saving ? '<span class="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent"></span>' : ''}
+                    ${state.saving ? '保存中...' : (state.editNode ? '保存更改' : '创建节点')}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        `;
+      }
+
+      function renderDeleteDialog() {
+        if (!state.deleteTarget) {
+          deleteRoot.innerHTML = '';
+          return;
+        }
+
+        deleteRoot.innerHTML = `
+          <div class="fixed inset-0 z-[220] flex items-center justify-center bg-black/45 p-5 backdrop-blur-[3px]">
+            <div class="w-full max-w-[420px] rounded-rf-xl bg-white shadow-rf3">
+              <div class="border-b border-rf-border px-5 py-4">
+                <div class="text-[16px] font-semibold text-rf-text">删除节点</div>
+              </div>
+              <div class="px-5 py-4 text-[13.5px] leading-6 text-rf-muted">
+                确定要删除节点「<span class="font-medium text-rf-text">${escapeHtml(state.deleteTarget.name)}</span>」吗？此操作不可撤销。
+              </div>
+              <div class="flex justify-end gap-2 rounded-b-rf-xl border-t border-rf-border bg-slate-50 px-5 py-3.5">
+                <button type="button" data-action="close-delete" class="inline-flex items-center gap-1.5 rounded-rf border border-rf-border bg-white px-3.5 py-[7px] text-[13.5px] font-medium text-rf-text transition hover:bg-slate-50">取消</button>
+                <button type="button" data-action="confirm-delete" class="inline-flex items-center gap-1.5 rounded-rf border border-red-500 bg-red-500 px-3.5 py-[7px] text-[13.5px] font-medium text-white transition hover:border-red-600 hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-60" ${state.deleting ? 'disabled' : ''}>
+                  ${state.deleting ? '<span class="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent"></span>' : ''}
+                  ${state.deleting ? '删除中...' : '确认删除'}
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      function renderAll() {
+        renderContent();
+        renderModal();
+        renderDeleteDialog();
+        renderToasts();
+      }
+
+      function updateModalValidationState() {
+        const errorEl = modalRoot.querySelector('[data-role="config-error"]');
+        if (errorEl) {
+          errorEl.textContent = state.configErr || '';
+          errorEl.classList.toggle('hidden', !state.configErr);
+        }
+        const submitButton = modalRoot.querySelector('[data-role="submit-button"]');
+        if (submitButton) {
+          submitButton.disabled = state.saving || !!state.configErr;
+        }
+      }
+
+      async function loadNodes() {
+        state.loading = true;
+        renderContent();
+        try {
+          const params = new URLSearchParams();
+          if (state.filter.source === 'manual') {
+            params.append('source', 'manual');
+          } else if (state.filter.source) {
+            params.append('source_id', state.filter.source);
+          }
+          if (state.filter.protocol) params.append('protocol', state.filter.protocol);
+          if (state.filter.enabled !== '') params.append('enabled', state.filter.enabled);
+          const data = await get('/api/nodes' + (params.toString() ? ('?' + params.toString()) : ''));
+          state.nodes = Array.isArray(data.data) ? data.data : [];
+          state.selectedIds = state.selectedIds.filter((id) => state.nodes.some((node) => node.id === id));
+        } catch (err) {
+          addToast('加载节点失败: ' + err.message, 'err');
+        } finally {
+          state.loading = false;
+          renderContent();
+        }
+      }
+
+      async function loadStats() {
+        try {
+          const data = await get('/api/nodes/stats');
+          state.stats = data.data || { total: 0, enabled: 0, by_source: {}, by_protocol: {} };
+          renderContent();
+        } catch (err) {
+          console.error('统计数据加载失败:', err);
+        }
+      }
+
+      async function loadSubscriptions() {
+        try {
+          const data = await get('/api/subscriptions');
+          state.subscriptions = Array.isArray(data.data) ? data.data : [];
+          renderContent();
+        } catch (err) {
+          console.error('订阅源加载失败:', err);
+        }
+      }
+
+      const WG_CONFIG_TEMPLATE = JSON.stringify({
+        "private-key": "",
+        "public-key": "",
+        "ip": "",
+        "dns": [""],
+        "mtu": 1420,
+        "allowed-ips": ["0.0.0.0/0"],
+        "test-url": "",
+      }, null, 2);
+
+      function resetForm(protocol) {
+        state.form = defaultForm();
+        state.form.protocol = protocol || 'share';
+        if (protocol === 'wireguard') {
+          state.form.configStr = WG_CONFIG_TEMPLATE;
+        }
+        state.configErr = '';
+      }
+
+      function openCreate(protocol) {
+        state.modalMode = 'form';
+        state.editNode = null;
+        resetForm(protocol);
+        renderModal();
+      }
+
+      async function openEdit(node) {
+        state.modalMode = 'form';
+        state.editNode = node;
+        state.form = {
+          name: node.name || '',
+          protocol: node.protocol === 'wireguard' ? 'wireguard' : 'share',
+          shareUrl: '',
+          server: node.server || '',
+          port: numberValue(node.port || 443),
+          configStr: JSON.stringify(node.config || {}, null, 2),
+          tags: Array.isArray(node.tags) ? node.tags.join(', ') : '',
+          enabled: node.enabled !== false,
+        };
+        state.configErr = '';
+        renderModal();
+
+        // 非 WireGuard 节点，异步获取分享链接预填
+        if (node.protocol !== 'wireguard') {
+          try {
+            const res = await get('/api/nodes/' + node.id + '/share');
+            if (res && res.data && res.data.share_url) {
+              state.form.shareUrl = res.data.share_url;
+              renderModal();
+            }
+          } catch (_) {
+            // 获取失败不影响编辑，保持空白即可
+          }
+        }
+      }
+
+      function closeModal() {
+        state.modalMode = null;
+        state.editNode = null;
+        state.saving = false;
+        state.configErr = '';
+        modalRoot.innerHTML = '';
+      }
+
+      function openDelete(node) {
+        state.deleteTarget = node;
+        state.deleting = false;
+        renderDeleteDialog();
+      }
+
+      function closeDelete() {
+        state.deleteTarget = null;
+        state.deleting = false;
+        deleteRoot.innerHTML = '';
+      }
+
+      async function submitForm() {
+        syncFormFromDom();
+        const isWireGuard = state.form.protocol === 'wireguard';
+        if (!isWireGuard && !state.editNode && !state.form.shareUrl.trim()) {
+          addToast('请输入分享链接', 'err');
+          return;
+        }
+        if (!validateConfig(state.form.configStr)) {
+          renderModal();
+          return;
+        }
+
+        const tags = state.form.tags
+          ? state.form.tags.split(',').map((item) => item.trim()).filter(Boolean)
+          : [];
+
+        const payload = isWireGuard ? {
+          name: state.form.name.trim(),
+          protocol: 'wireguard',
+          server: state.form.server.trim(),
+          port: numberValue(state.form.port),
+          config: JSON.parse(state.form.configStr || '{}'),
+          tags,
+          enabled: state.form.enabled,
+        } : {
+          name: state.form.name.trim(),
+          protocol: 'share',
+          share_url: state.form.shareUrl.trim(),
+          tags,
+          enabled: state.form.enabled,
+        };
+
+        state.saving = true;
+        renderModal();
+        try {
+          if (state.editNode) {
+            await put('/api/nodes/' + state.editNode.id, payload);
+            addToast('节点更新成功');
+          } else {
+            await post('/api/nodes', payload);
+            addToast('节点创建成功');
+          }
+          closeModal();
+          await Promise.all([loadNodes(), loadStats()]);
+        } catch (err) {
+          state.saving = false;
+          renderModal();
+          addToast(err.message, 'err');
+        }
+      }
+
+      async function confirmDelete() {
+        if (!state.deleteTarget) return;
+        state.deleting = true;
+        renderDeleteDialog();
+        try {
+          await del('/api/nodes/' + state.deleteTarget.id);
+          addToast('节点「' + state.deleteTarget.name + '」已删除');
+          closeDelete();
+          await Promise.all([loadNodes(), loadStats()]);
+        } catch (err) {
+          state.deleting = false;
+          renderDeleteDialog();
+          addToast('删除失败: ' + err.message, 'err');
+        }
+      }
+
+      async function handleBatch(action) {
+        if (state.selectedIds.length === 0) return;
+        try {
+          await patch('/api/nodes/batch', { ids: state.selectedIds, action });
+          addToast('已' + (action === 'enable' ? '启用' : '禁用') + ' ' + state.selectedIds.length + ' 个节点');
+          state.selectedIds = [];
+          await Promise.all([loadNodes(), loadStats()]);
+        } catch (err) {
+          addToast('批量操作失败: ' + err.message, 'err');
+        }
+      }
+
+      root.addEventListener('click', async (event) => {
+        const target = event.target.closest('[data-action]');
+        if (!target) return;
+
+        const action = target.dataset.action;
+        const id = Number(target.dataset.id);
+        const node = state.nodes.find((item) => item.id === id);
+
+        if (action === 'create-share') openCreate('share');
+        if (action === 'create-wireguard') openCreate('wireguard');
+        if (action === 'edit' && node) openEdit(node);
+        if (action === 'copy-url' && node) await copyNodeUrl(node);
+        if (action === 'delete' && node) openDelete(node);
+        if (action === 'batch-enable') await handleBatch('enable');
+        if (action === 'batch-disable') await handleBatch('disable');
+        if (action === 'clear-selected') {
+          state.selectedIds = [];
+          renderContent();
+        }
+        if (action === 'toggle-all') {
+          state.selectedIds = state.selectedIds.length === state.nodes.length ? [] : state.nodes.map((item) => item.id);
+          renderContent();
+        }
+        if (action === 'toggle-select' && node) {
+          state.selectedIds = state.selectedIds.includes(node.id)
+            ? state.selectedIds.filter((item) => item !== node.id)
+            : state.selectedIds.concat(node.id);
+          renderContent();
+        }
+      });
+
+      contentEl.addEventListener('change', (event) => {
+        const target = event.target;
+        if (target.matches('[data-filter]')) {
+          state.filter[target.dataset.filter] = target.value;
+          state.selectedIds = [];
+          loadNodes();
+        }
+      });
+
+      modalRoot.addEventListener('click', (event) => {
+        const overlay = event.target;
+        if (overlay === modalRoot.firstElementChild) {
+          closeModal();
+          return;
+        }
+
+        const target = event.target.closest('[data-action]');
+        if (!target) return;
+        if (target.dataset.action === 'close-modal') closeModal();
+      });
+
+      modalRoot.addEventListener('input', (event) => {
+        if (event.target.name === 'configStr') {
+          syncFormFromDom();
+          validateConfig(event.target.value);
+          updateModalValidationState();
+        }
+      });
+
+      modalRoot.addEventListener('submit', (event) => {
+        if (event.target.id !== 'node-form') return;
+        event.preventDefault();
+        submitForm();
+      });
+
+      deleteRoot.addEventListener('click', (event) => {
+        const overlay = event.target;
+        if (overlay === deleteRoot.firstElementChild) {
+          closeDelete();
+          return;
+        }
+
+        const target = event.target.closest('[data-action]');
+        if (!target) return;
+        if (target.dataset.action === 'close-delete') closeDelete();
+        if (target.dataset.action === 'confirm-delete') confirmDelete();
+      });
+
+      const icons = {
+        plus: '<svg class="h-[14px] w-[14px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>',
+        check: '<svg class="h-[15px] w-[15px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>',
+        alert: '<svg class="h-[15px] w-[15px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"></path><path d="M12 17h.01"></path><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path></svg>',
+        close: '<svg class="h-[15px] w-[15px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>',
+        edit: '<svg class="h-[15px] w-[15px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"></path></svg>',
+        trash: '<svg class="h-[15px] w-[15px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14H6L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M9 6V4h6v2"></path></svg>',
+        batch: '<svg class="h-[14px] w-[14px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"></polyline><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>',
+        serverBig: '<svg class="h-[22px] w-[22px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="7" rx="2"></rect><rect x="2" y="14" width="20" height="7" rx="2"></rect><path d="M6 6h.01"></path><path d="M6 17h.01"></path></svg>',
+        link: '<svg class="h-[15px] w-[15px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>',
+      };
+
+      renderAll();
+      Promise.all([loadNodes(), loadStats(), loadSubscriptions()]);
+    })();
+  </script>

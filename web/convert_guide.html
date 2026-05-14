@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>订阅转换 · RuleFlow</title>
+  <link rel="icon" type="image/svg+xml" href="/web/favicon.svg?v=7">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config = { corePlugins: { preflight: false } }</script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #030712;
+      color: #f3f4f6;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+    .card {
+      background: #111827;
+      border: 1px solid #1f2937;
+      border-radius: 10px;
+      padding: 24px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+    }
+    input, select {
+      box-sizing: border-box;
+      width: 100%;
+      height: 38px;
+      border: 1px solid #374151;
+      border-radius: 8px;
+      padding: 0 12px;
+      font-size: 13.5px;
+      line-height: 36px;
+      color: #f3f4f6;
+      background: #1f2937;
+      outline: none;
+      transition: border-color .15s, box-shadow .15s;
+      font-family: inherit;
+      appearance: none;
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    input:focus, select:focus {
+      border-color: #6366f1;
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+    }
+    input:hover:not(:focus), select:hover:not(:focus) { border-color: #4b5563; }
+    input::placeholder { color: #6b7280; font-size: 13px; line-height: normal; }
+    .select-wrap { position: relative; }
+    .select-wrap select { padding-right: 32px; cursor: pointer; }
+    .select-wrap::after {
+      content: '';
+      pointer-events: none;
+      position: absolute;
+      right: 11px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 0; height: 0;
+      border-left: 4.5px solid transparent;
+      border-right: 4.5px solid transparent;
+      border-top: 5px solid #6b7280;
+    }
+    .btn-copy {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid #374151;
+      border-radius: 8px;
+      background: #1f2937;
+      padding: 0 16px;
+      height: 38px;
+      font-size: 13px;
+      font-weight: 500;
+      color: #d1d5db;
+      cursor: pointer;
+      transition: background .15s, border-color .15s;
+      font-family: inherit;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .btn-copy:hover { background: #374151; border-color: #4b5563; }
+    .btn-copy:disabled { opacity: .4; cursor: not-allowed; }
+    .result-box {
+      flex: 1;
+      background: #1f2937;
+      border: 1px solid #374151;
+      border-radius: 8px;
+      padding: 9px 12px;
+      font-family: 'SFMono-Regular', Menlo, monospace;
+      font-size: 12.5px;
+      color: #6b7280;
+      word-break: break-all;
+      line-height: 1.6;
+      min-height: 38px;
+      display: flex;
+      align-items: center;
+    }
+    .result-box.has-value { color: #f3f4f6; }
+    label { display: block; font-size: 12.5px; font-weight: 600; color: #9ca3af; margin-bottom: 6px; }
+    /* 预览面板 */
+    .preview-panel {
+      background: #111827;
+      border: 1px solid #1f2937;
+      border-radius: 10px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+      overflow: hidden;
+    }
+    .tab-bar {
+      display: flex;
+      border-bottom: 1px solid #1f2937;
+      padding: 0 4px;
+    }
+    .tab-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 11px 14px;
+      font-size: 13px;
+      font-weight: 500;
+      color: #6b7280;
+      border: none;
+      background: none;
+      cursor: pointer;
+      font-family: inherit;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      transition: color .15s;
+    }
+    .tab-btn:hover { color: #d1d5db; }
+    .tab-btn.active { color: #818cf8; border-bottom-color: #6366f1; }
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+    .preview-code-wrap {
+      padding: 16px 20px;
+      overflow-x: auto;
+      max-height: 420px;
+      overflow-y: auto;
+    }
+    .preview-code {
+      font-family: 'SFMono-Regular', Menlo, monospace;
+      font-size: 12.5px;
+      color: #d1d5db;
+      line-height: 1.7;
+      white-space: pre;
+      margin: 0;
+    }
+    .preview-placeholder {
+      padding: 36px 20px;
+      text-align: center;
+      font-size: 13px;
+      color: #6b7280;
+    }
+    #toast-root { pointer-events: none; position: fixed; bottom: 22px; left: 22px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; }
+    .toast {
+      pointer-events: auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 240px;
+      max-width: 360px;
+      border-radius: 8px;
+      border: 1px solid;
+      padding: 10px 14px;
+      font-size: 13px;
+      font-weight: 500;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+    }
+    .toast-ok  { border-color: rgba(16,185,129,.3); background: rgba(16,185,129,.15); color: #6ee7b7; }
+    .toast-err { border-color: rgba(239,68,68,.3);  background: rgba(239,68,68,.15);  color: #fca5a5; }
+  </style>
+</head>
+<body>
+  <div style="max-width:560px; margin:0 auto; padding:48px 20px 64px; display:flex; flex-direction:column; gap:16px">
+
+    <!-- 生成器 -->
+    <div class="card">
+      <div style="font-size:14px;font-weight:600;color:#f3f4f6;margin-bottom:20px">链接生成器</div>
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div>
+          <label for="gen-url">订阅地址 <span style="color:#ef4444">*</span></label>
+          <input id="gen-url" type="url" placeholder="https://example.com/your-subscription">
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:12px">
+          <div style="flex:1;min-width:140px">
+            <label for="gen-target">输出格式</label>
+            <div class="select-wrap">
+              <select id="gen-target">
+                <option value="">Clash Mihomo（默认）</option>
+                <option value="stash">stash</option>
+                <option value="surge">surge</option>
+                <option value="sing-box">sing-box</option>
+              </select>
+            </div>
+          </div>
+          <div style="flex:1;min-width:140px">
+            <label for="gen-template">配置模板</label>
+            <div class="select-wrap">
+              <select id="gen-template">
+                <option value="">不使用模板</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div>
+          <label>生成的转换链接</label>
+          <div style="display:flex;align-items:stretch;gap:8px">
+            <div class="result-box" id="gen-result">在上方填写订阅地址后，链接将在此显示</div>
+            <button class="btn-copy" id="gen-copy-btn" disabled>
+              <svg id="gen-copy-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
+              </svg>复制
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 预览面板 -->
+    <div class="preview-panel">
+      <div class="tab-bar">
+        <button class="tab-btn active" data-tab="tpl">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+          模版预览
+        </button>
+        <button class="tab-btn" data-tab="conv">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+          转化预览
+        </button>
+      </div>
+      <div class="tab-pane active" id="pane-tpl">
+        <div id="tpl-placeholder" class="preview-placeholder">选择配置模板后将在此显示模板内容</div>
+        <div class="preview-code-wrap" id="tpl-content" style="display:none">
+          <pre class="preview-code" id="tpl-code"></pre>
+        </div>
+      </div>
+      <div class="tab-pane" id="pane-conv">
+        <div id="conv-placeholder" class="preview-placeholder">填写订阅地址后可预览转化结果</div>
+        <div class="preview-code-wrap" id="conv-content" style="display:none">
+          <pre class="preview-code" id="conv-code"></pre>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div id="toast-root"></div>
+
+  <script>
+    (() => {
+      const toastRoot = document.getElementById('toast-root');
+      const toasts = [];
+
+      function renderToasts() {
+        toastRoot.innerHTML = toasts.map((t) => `
+          <div class="toast ${t.type === 'ok' ? 'toast-ok' : 'toast-err'}">
+            ${t.type === 'ok'
+              ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><polyline points="20 6 9 17 4 12"></polyline></svg>'
+              : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M12 9v4"></path><path d="M12 17h.01"></path><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path></svg>'}
+            <span>${t.message}</span>
+          </div>
+        `).join('');
+      }
+
+      function toast(message, type = 'ok') {
+        const id = Date.now() + Math.random();
+        toasts.push({ id, message, type });
+        renderToasts();
+        setTimeout(() => {
+          const idx = toasts.findIndex((t) => t.id === id);
+          if (idx >= 0) toasts.splice(idx, 1);
+          renderToasts();
+        }, 3000);
+      }
+
+      // Tab 切换
+      document.querySelectorAll('.tab-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
+          document.querySelectorAll('.tab-pane').forEach((p) => p.classList.remove('active'));
+          btn.classList.add('active');
+          document.getElementById('pane-' + btn.dataset.tab).classList.add('active');
+        });
+      });
+
+      const genTemplate = document.getElementById('gen-template');
+      const genUrl = document.getElementById('gen-url');
+      const genTarget = document.getElementById('gen-target');
+      const genResult = document.getElementById('gen-result');
+      const genCopyBtn = document.getElementById('gen-copy-btn');
+      let allTemplates = [];
+      let convDebounce = null;
+      let lastTplId = null;
+      let lastConvParams = null;
+
+      function filterTemplates() {
+        const effectiveTarget = genTarget.value || 'clash-mihomo';
+        const filtered = allTemplates.filter((t) => !t.target || t.target === effectiveTarget);
+        const prevVal = genTemplate.value;
+        genTemplate.innerHTML = '<option value="">不使用模板</option>';
+        filtered.forEach((tpl) => {
+          const opt = document.createElement('option');
+          opt.value = String(tpl.id);
+          opt.textContent = tpl.name;
+          genTemplate.appendChild(opt);
+        });
+        if (filtered.some((t) => String(t.id) === prevVal)) genTemplate.value = prevVal;
+        buildUrl();
+      }
+
+      fetch('/api/templates/public').then((r) => r.ok ? r.json() : null).then((json) => {
+        allTemplates = json?.data || [];
+        if (allTemplates.length) filterTemplates();
+      }).catch(() => {});
+
+      function buildUrl() {
+        const subUrl = genUrl.value.trim();
+        if (!subUrl) {
+          genResult.textContent = '在上方填写订阅地址后，链接将在此显示';
+          genResult.classList.remove('has-value');
+          genCopyBtn.disabled = true;
+          scheduleConvPreview(null);
+          return;
+        }
+        const p = new URLSearchParams();
+        p.set('url', subUrl);
+        if (genTarget.value) p.set('target', genTarget.value);
+        if (genTemplate.value) p.set('template', genTemplate.value);
+        genResult.textContent = window.location.origin + '/convert?' + p.toString();
+        genResult.classList.add('has-value');
+        genCopyBtn.disabled = false;
+        scheduleConvPreview(p.toString());
+      }
+
+      genUrl.addEventListener('input', buildUrl);
+      genTarget.addEventListener('change', () => { filterTemplates(); buildUrl(); });
+      genTemplate.addEventListener('change', () => { loadTplPreview(genTemplate.value); buildUrl(); });
+
+      genCopyBtn.addEventListener('click', async () => {
+        if (genCopyBtn.disabled) return;
+        try {
+          await navigator.clipboard.writeText(genResult.textContent);
+          const icon = document.getElementById('gen-copy-icon');
+          icon.innerHTML = '<polyline points="20 6 9 17 4 12" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></polyline>';
+          toast('链接已复制');
+          setTimeout(() => {
+            icon.innerHTML = '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>';
+          }, 1500);
+        } catch {
+          toast('复制失败，请手动选择', 'err');
+        }
+      });
+
+      // 模版预览
+      function setTplState(state, text) {
+        const ph = document.getElementById('tpl-placeholder');
+        const ct = document.getElementById('tpl-content');
+        ph.style.display = state === 'placeholder' ? '' : 'none';
+        ct.style.display = state === 'content' ? '' : 'none';
+        if (state === 'placeholder') ph.textContent = text || '选择配置模板后将在此显示模板内容';
+        if (state === 'content') document.getElementById('tpl-code').textContent = text;
+      }
+
+      async function loadTplPreview(tplId) {
+        if (tplId === lastTplId) return;
+        lastTplId = tplId;
+        if (!tplId) { setTplState('placeholder'); return; }
+        setTplState('placeholder', '加载中…');
+        try {
+          const r = await fetch(`/api/templates/public/${tplId}`);
+          if (!r.ok) throw new Error();
+          const json = await r.json();
+          setTplState('content', json?.data?.content ?? '（无内容）');
+        } catch {
+          setTplState('placeholder', '加载失败');
+        }
+      }
+
+      // 转化预览（防抖 800ms）
+      function setConvState(state, text) {
+        const ph = document.getElementById('conv-placeholder');
+        const ct = document.getElementById('conv-content');
+        ph.style.display = state === 'placeholder' ? '' : 'none';
+        ct.style.display = state === 'content' ? '' : 'none';
+        if (state === 'placeholder') ph.textContent = text || '填写订阅地址后可预览转化结果';
+        if (state === 'content') document.getElementById('conv-code').textContent = text;
+      }
+
+      function scheduleConvPreview(params) {
+        clearTimeout(convDebounce);
+        if (!params) { setConvState('placeholder'); lastConvParams = null; return; }
+        convDebounce = setTimeout(() => loadConvPreview(params), 800);
+      }
+
+      async function loadConvPreview(params) {
+        if (params === lastConvParams) return;
+        lastConvParams = params;
+        setConvState('placeholder', '转化中…');
+        try {
+          const r = await fetch('/convert?' + params);
+          if (!r.ok) throw new Error(await r.text());
+          setConvState('content', await r.text());
+        } catch (e) {
+          setConvState('placeholder', '转化失败：' + (e?.message || '未知错误'));
+        }
+      }
+    })();
+  </script>
+</body>
+</html>

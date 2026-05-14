@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RuleFlow</title>
+  <link rel="icon" type="image/svg+xml" href="/web/favicon.svg?v=7">
+  <script src="/web/shared/tailwind.config.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/web/shared/base.css">
+  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <style>
+    body { overflow-x: hidden; }
+    #app-content .sidebar { display: none !important; }
+    #app-content .main { margin-left: 0 !important; padding: 0 !important; width: 100% !important; }
+    #app-content .app { min-height: auto !important; padding: 0 !important; display: block !important; }
+    #app-content .tc { left: 22px; bottom: 22px; }
+    #app-content > * { min-height: calc(100vh - 180px); }
+    .shell-loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 280px;
+      color: #6b7280;
+      font-size: 13px;
+    }
+    .shell-spin {
+      width: 20px;
+      height: 20px;
+      margin-right: 10px;
+      border: 2px solid #6366f1;
+      border-top-color: transparent;
+      border-radius: 999px;
+      animation: shell-rot .6s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes shell-rot {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell-overlay" data-shell-overlay></div>
+  <div class="app">
+    <aside class="sidebar" id="shell-sidebar">
+      <div class="sb-brand">
+        <div class="sb-logo">
+          <img src="/web/favicon.svg?v=7" alt="" aria-hidden="true">
+        </div>
+        <div>
+          <div class="sb-name">RuleFlow</div>
+          <div class="sb-sub">Rules, nodes, subscriptions</div>
+        </div>
+      </div>
+
+      <div class="sb-nav">
+        <div class="sb-sec">Workspace</div>
+        <a href="/dashboard" class="nav-lnk" data-route="/dashboard">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect width="7" height="9" x="3" y="3" rx="1"></rect><rect width="7" height="5" x="14" y="3" rx="1"></rect><rect width="7" height="9" x="14" y="12" rx="1"></rect><rect width="7" height="5" x="3" y="16" rx="1"></rect>
+          </svg>
+          控制台
+        </a>
+        <a href="/subscriptions" class="nav-lnk" data-route="/subscriptions">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 11a9 9 0 0 1 9 9"></path><path d="M4 4a16 16 0 0 1 16 16"></path><circle cx="5" cy="19" r="1"></circle>
+          </svg>
+          订阅源
+        </a>
+        <a href="/nodes" class="nav-lnk" data-route="/nodes">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="16" y="16" width="6" height="6" rx="1"></rect><rect x="2" y="16" width="6" height="6" rx="1"></rect><rect x="9" y="2" width="6" height="6" rx="1"></rect><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"></path><path d="M12 12V8"></path>
+          </svg>
+          节点管理
+        </a>
+        <a href="/rule-sources" class="nav-lnk" data-route="/rule-sources">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 6h16"></path><path d="M4 12h10"></path><path d="M4 18h7"></path><path d="m16 15 2 2 4-4"></path>
+          </svg>
+          规则源
+        </a>
+        <a href="/templates" class="nav-lnk" data-route="/templates">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 22h14a2 2 0 0 0 2-2V7l-5-5H6a2 2 0 0 0-2 2v4"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path><path d="m5 12-3 3 3 3"></path><path d="m9 18 3-3-3-3"></path>
+          </svg>
+          配置模板
+        </a>
+        <a href="/configs" class="nav-lnk" data-route="/configs">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 7h-9"></path><path d="M14 17H5"></path><circle cx="17" cy="17" r="3"></circle><circle cx="7" cy="7" r="3"></circle>
+          </svg>
+          订阅配置
+        </a>
+        <a href="/config-access-logs" class="nav-lnk" data-route="/config-access-logs">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M15 12h-5"></path><path d="M15 8H9"></path><path d="M19 17V5a2 2 0 0 0-2-2H4"></path><path d="M8 21h12a2 2 0 0 0 2-2v-1a1 1 0 0 0-1-1H11a1 1 0 0 0-1 1v1a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2"></path>
+          </svg>
+          访问日志
+        </a>
+        <a href="/data-migration" class="nav-lnk" data-route="/data-migration">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line>
+          </svg>
+          数据迁移
+        </a>
+      </div>
+
+      <div class="sb-actions">
+        <div class="sb-sec">System</div>
+        <button type="button" class="nav-lnk" data-action="refresh-cache">
+          <span data-role="refresh-cache-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"></path><path d="M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+            </svg>
+          </span>
+          刷新缓存
+        </button>
+      </div>
+
+      <div class="sb-foot">
+        <div class="sb-meta">
+          <span class="sb-ftxt">Ablate AI / RuleFlow</span>
+          <a class="sb-gh" href="https://github.com/ablate-ai/RuleFlow" target="_blank" rel="noreferrer" aria-label="GitHub 仓库">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M12 .5C5.65.5.5 5.66.5 12.02c0 5.09 3.29 9.4 7.86 10.92.58.11.79-.25.79-.56 0-.28-.01-1.02-.02-2-3.2.7-3.88-1.54-3.88-1.54-.52-1.33-1.28-1.68-1.28-1.68-1.05-.72.08-.7.08-.7 1.16.08 1.78 1.2 1.78 1.2 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.72-1.55-2.55-.29-5.23-1.28-5.23-5.68 0-1.25.45-2.27 1.18-3.07-.12-.29-.51-1.45.11-3.02 0 0 .96-.31 3.14 1.17a10.9 10.9 0 0 1 5.72 0c2.18-1.48 3.13-1.17 3.13-1.17.63 1.57.24 2.73.12 3.02.73.8 1.18 1.82 1.18 3.07 0 4.41-2.69 5.38-5.26 5.67.41.35.77 1.03.77 2.08 0 1.5-.01 2.71-.01 3.08 0 .31.21.68.8.56A11.53 11.53 0 0 0 23.5 12C23.5 5.66 18.34.5 12 .5z"></path>
+            </svg>
+            <span>GitHub</span>
+          </a>
+        </div>
+        <a href="/logout" class="sb-logout">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line>
+          </svg>
+          退出登录
+        </a>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="shell-topbar">
+        <button type="button" class="shell-mobile-toggle" data-shell-toggle aria-label="打开导航">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+            <line x1="4" y1="7" x2="20" y2="7"></line>
+            <line x1="4" y1="12" x2="20" y2="12"></line>
+            <line x1="4" y1="17" x2="20" y2="17"></line>
+          </svg>
+        </button>
+      </div>
+
+      <div class="shell-stage">
+        <div id="app-content">
+          <div class="shell-loading"><span class="shell-spin"></span>加载中...</div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div id="shell-toast-root" class="pointer-events-none fixed bottom-[22px] left-[22px] z-[9999] flex flex-col gap-2"></div>
+
+  <script>
+    const routeMeta = {
+      '/dashboard': { fragment: '/app-fragments/dashboard', title: '控制台', subtitle: '统一查看服务状态、订阅健康度与资源概况' },
+      '/subscriptions': { fragment: '/app-fragments/subscriptions', title: '订阅源管理', subtitle: '管理订阅抓取、节点同步和到期流量信息' },
+      '/nodes': { fragment: '/app-fragments/nodes', title: '节点管理', subtitle: '维护手动节点与订阅节点，统一处理启停状态' },
+      '/rule-sources': { fragment: '/app-fragments/rule-sources', title: '规则源管理', subtitle: '配置规则同步来源与解析策略' },
+      '/templates': { fragment: '/app-fragments/templates', title: '配置模板', subtitle: '编辑输出模板，组织目标平台的生成逻辑' },
+      '/configs': { fragment: '/app-fragments/configs', title: '订阅配置', subtitle: '组合策略、模板和节点，生成最终订阅入口' },
+      '/config-access-logs': { fragment: '/app-fragments/config-access-logs', title: '访问日志', subtitle: '追踪配置分发访问记录与命中情况' },
+      '/data-migration': { fragment: '/app-fragments/data-migration', title: '数据迁移', subtitle: '导出或导入全量数据，用于跨环境迁移和备份' },
+    };
+    const shellToastRoot = document.getElementById('shell-toast-root');
+    const shellToasts = [];
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+      })[char]);
+    }
+
+    function renderShellToasts() {
+      if (!shellToastRoot) return;
+      shellToastRoot.innerHTML = shellToasts.map((toast) => `
+        <div class="pointer-events-auto flex min-w-[260px] max-w-[380px] items-center gap-[9px] rounded-lg border px-[14px] py-[10px] text-[13px] font-medium ${toast.type === 'ok' ? 'border-emerald-500/30 bg-emerald-500/15 text-emerald-400' : 'border-red-500/30 bg-red-500/15 text-red-400'}">
+          ${toast.type === 'ok' ? '<svg class="h-[15px] w-[15px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>' : '<svg class="h-[15px] w-[15px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"></path><path d="M12 17h.01"></path><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path></svg>'}
+          <span>${escapeHtml(toast.message)}</span>
+        </div>
+      `).join('');
+    }
+
+    function addShellToast(message, type = 'ok') {
+      const id = Date.now() + Math.random();
+      shellToasts.push({ id, message, type });
+      renderShellToasts();
+      window.setTimeout(() => {
+        const index = shellToasts.findIndex((item) => item.id === id);
+        if (index >= 0) shellToasts.splice(index, 1);
+        renderShellToasts();
+      }, 3200);
+    }
+
+    function normalizePath(pathname) {
+      return routeMeta[pathname] ? pathname : '/dashboard';
+    }
+
+    function closeMobileNav() {
+      document.body.classList.remove('shell-nav-open');
+    }
+
+    function setActiveNav(pathname) {
+      const activePath = normalizePath(pathname);
+      document.querySelectorAll('.nav-lnk[data-route]').forEach((link) => {
+        if (link.dataset.route === activePath) {
+          link.classList.add('active');
+        } else {
+          link.classList.remove('active');
+        }
+      });
+    }
+
+    function setTitle(pathname) {
+      const meta = routeMeta[normalizePath(pathname)];
+      document.title = `RuleFlow - ${meta.title}`;
+    }
+
+    function loadRoute(pathname, push) {
+      const activePath = normalizePath(pathname);
+      const meta = routeMeta[activePath];
+      setActiveNav(activePath);
+      setTitle(activePath);
+      window.__RULEFLOW_EMBEDDED__ = true;
+      htmx.ajax('GET', meta.fragment, '#app-content');
+      closeMobileNav();
+      if (push && window.location.pathname !== activePath) {
+        window.history.pushState({}, '', activePath);
+      }
+    }
+
+    function setRefreshCacheLoading(loading) {
+      const button = document.querySelector('[data-action="refresh-cache"]');
+      const icon = document.querySelector('[data-role="refresh-cache-icon"]');
+      if (!button || !icon) return;
+      button.disabled = loading;
+      icon.innerHTML = loading
+        ? '<span class="inline-block h-[14px] w-[14px] animate-spin rounded-full border-2 border-current border-t-transparent"></span>'
+        : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"></path><path d="M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>';
+    }
+
+    async function triggerRefreshCache() {
+      setRefreshCacheLoading(true);
+      try {
+        const response = await fetch('/api/cache/policies/clear', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: '{}',
+        });
+        if (!response.ok) {
+          const text = await response.text();
+          throw new Error(text || `请求失败: ${response.status}`);
+        }
+        addShellToast('缓存已刷新');
+      } catch (error) {
+        addShellToast(error.message || '刷新缓存失败', 'err');
+      } finally {
+        setRefreshCacheLoading(false);
+      }
+    }
+
+    document.addEventListener('click', (event) => {
+      const link = event.target.closest('a[href]');
+      const refreshButton = event.target.closest('[data-action="refresh-cache"]');
+      const toggle = event.target.closest('[data-shell-toggle]');
+      const overlay = event.target.closest('[data-shell-overlay]');
+
+      if (toggle) {
+        event.preventDefault();
+        document.body.classList.toggle('shell-nav-open');
+        return;
+      }
+
+      if (overlay) {
+        closeMobileNav();
+        return;
+      }
+
+      if (refreshButton) {
+        event.preventDefault();
+        triggerRefreshCache();
+        return;
+      }
+
+      if (!link) return;
+      const url = new URL(link.href, window.location.origin);
+      if (url.origin !== window.location.origin || !routeMeta[url.pathname]) return;
+      event.preventDefault();
+      loadRoute(url.pathname, true);
+    });
+
+    window.addEventListener('popstate', () => {
+      loadRoute(window.location.pathname, false);
+    });
+
+    document.body.addEventListener('htmx:afterSwap', (event) => {
+      if (event.detail && event.detail.target && event.detail.target.id === 'app-content') {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    });
+
+    loadRoute(window.location.pathname, false);
+  </script>
+</body>
+</html>

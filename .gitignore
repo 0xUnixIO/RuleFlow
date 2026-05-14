@@ -1,0 +1,33 @@
+# 二进制文件
+ruleflow
+ruleflow.exe
+
+# 生成的配置
+clash_config.yaml
+example_config.yaml
+
+# 本地构建缓存
+.cache/
+.gocache/
+
+# 测试覆盖率
+*.out
+coverage.html
+
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+
+# 环境变量
+.env
+.env.docker
+
+# 前端
+web-ui/node_modules/
+web-ui/dist/

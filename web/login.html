@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>登录 · RuleFlow</title>
+  <link rel="icon" type="image/svg+xml" href="/web/favicon.svg?v=7">
+  <script src="/web/shared/tailwind.config.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/web/shared/base.css">
+</head>
+<body class="min-h-screen flex items-center justify-center px-4">
+  <div class="w-full max-w-sm">
+    <div class="text-center mb-8">
+      <div class="inline-flex items-center justify-center w-12 h-12 rounded-xl overflow-hidden mb-4">
+        <img src="/web/favicon.svg?v=7" alt="" aria-hidden="true" class="block w-full h-full">
+      </div>
+      <h1 class="text-white text-2xl font-bold tracking-tight">RuleFlow</h1>
+      <p class="text-gray-500 text-sm mt-1">管理控制台</p>
+    </div>
+
+    <div class="bg-gray-900 rounded-xl border border-gray-800 p-8 shadow-2xl">
+      <div id="error-bar" class="hidden mb-4 items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/15 px-4 py-2.5 text-[13px] text-red-400">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line>
+        </svg>
+        密码错误，请重试
+      </div>
+
+      <form method="POST" action="/login" id="form" class="space-y-4">
+        <input type="hidden" name="next" id="next-input">
+        <div>
+          <label for="password" class="block mb-1.5 text-[13px] font-medium text-gray-300">密码</label>
+          <div class="relative">
+            <input
+              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 pr-10 text-[14px] text-gray-100 placeholder-gray-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors"
+              type="password"
+              id="password"
+              name="password"
+              placeholder="请输入管理密码"
+              autofocus
+              autocomplete="current-password"
+            >
+            <button
+              type="button"
+              class="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 text-gray-500 hover:text-gray-300 transition-colors rounded"
+              onclick="togglePwd()"
+              title="显示/隐藏密码"
+            >
+              <svg id="eye-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <button
+          type="submit"
+          class="w-full bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-medium py-2.5 rounded-lg text-sm transition-colors"
+        >
+          登录
+        </button>
+      </form>
+
+      <div class="mt-5 flex items-center justify-between text-[12px] text-gray-600">
+        <span>仅限管理员访问</span>
+        <span>RuleFlow &copy; <span id="yr"></span></span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.getElementById('yr').textContent = new Date().getFullYear();
+
+    const params = new URLSearchParams(location.search);
+    document.getElementById('next-input').value = params.get('next') || '';
+    if (params.get('error') === '1') {
+      const bar = document.getElementById('error-bar');
+      bar.classList.remove('hidden');
+      bar.classList.add('flex');
+    }
+
+    function togglePwd() {
+      const inp = document.getElementById('password');
+      const icon = document.getElementById('eye-icon');
+      if (inp.type === 'password') {
+        inp.type = 'text';
+        icon.innerHTML = '<path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94"></path><path d="M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19"></path><line x1="1" y1="1" x2="23" y2="23"></line>';
+      } else {
+        inp.type = 'password';
+        icon.innerHTML = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>';
+      }
+    }
+  </script>
+</body>
+</html>

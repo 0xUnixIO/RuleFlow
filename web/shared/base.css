@@ -1,0 +1,810 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --sw: 240px;
+  --shell-pad: 20px;
+  --shell-gap: 16px;
+  --bg: #030712;
+  --bg-soft: rgba(17, 24, 39, 0.95);
+  --bg-strong: rgba(17, 24, 39, 1);
+  --card: #111827;
+  --card-solid: #111827;
+  --bdr: #1f2937;
+  --bdr-strong: #374151;
+  --t1: #f3f4f6;
+  --t2: #9ca3af;
+  --t3: #6b7280;
+  --t4: #4b5563;
+  --grn: #6366f1;
+  --grnd: #4f46e5;
+  --grnbg: rgba(99, 102, 241, 0.2);
+  --red: #ef4444;
+  --redbg: rgba(239, 68, 68, 0.15);
+  --blu: #3b82f6;
+  --blubg: rgba(59, 130, 246, 0.15);
+  --org: #f59e0b;
+  --orgbg: rgba(245, 158, 11, 0.15);
+  --pur: #8b5cf6;
+  --purbg: rgba(139, 92, 246, 0.15);
+  --cyn: #06b6d4;
+  --cynbg: rgba(6, 182, 212, 0.15);
+  --ylw: #fbbf24;
+  --ylwbg: rgba(251, 191, 36, 0.15);
+  --sh1: 0 4px 12px rgba(0, 0, 0, 0.25);
+  --sh2: 0 8px 24px rgba(0, 0, 0, 0.35);
+  --sh3: 0 20px 60px rgba(0, 0, 0, 0.5);
+  --rs: 8px;
+  --rm: 10px;
+  --rl: 12px;
+  --rxl: 14px;
+  --rf: 9999px;
+}
+
+html { min-height: 100%; }
+
+body {
+  min-height: 100vh;
+  font-family: "SF Pro Display", "SF Pro Text", "Segoe UI Variable", "Inter", "PingFang SC", "Hiragino Sans GB", sans-serif;
+  color: var(--t1);
+  line-height: 1.5;
+  background: #030712;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+a, button, input, textarea, select { font: inherit; }
+
+button {
+  border: 0;
+  background: none;
+  color: inherit;
+}
+
+input, textarea, select {
+  color: var(--t1);
+}
+
+.app {
+  display: flex;
+  min-height: 100vh;
+  gap: var(--shell-gap);
+  padding: var(--shell-pad);
+}
+
+.sidebar {
+  position: sticky;
+  top: var(--shell-pad);
+  align-self: flex-start;
+  width: var(--sw);
+  max-height: calc(100vh - (var(--shell-pad) * 2));
+  background: #111827;
+  border: 1px solid #1f2937;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  z-index: 40;
+}
+
+.main {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.sb-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 20px 16px;
+  border-bottom: 1px solid #1f2937;
+}
+
+.sb-logo {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.sb-logo img { width: 100%; height: 100%; display: block; }
+
+.sb-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: #f3f4f6;
+  letter-spacing: -0.02em;
+}
+
+.sb-sub {
+  margin-top: 1px;
+  font-size: 11px;
+  color: var(--t4);
+}
+
+.sb-nav {
+  flex: 1;
+  padding: 8px 10px 10px;
+  overflow-y: auto;
+}
+
+.sb-actions {
+  padding: 0 10px 10px;
+}
+
+.sb-sec {
+  padding: 10px 8px 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--t4);
+}
+
+.nav-lnk {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  color: var(--t2);
+  text-decoration: none;
+  font-size: 13.5px;
+  font-weight: 500;
+  transition: background .15s ease, color .15s ease;
+}
+
+.nav-lnk svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.nav-lnk:hover {
+  color: #e5e7eb;
+  background: rgba(55, 65, 81, 0.5);
+}
+
+.nav-lnk.active {
+  color: #a5b4fc;
+  background: rgba(99, 102, 241, 0.2);
+}
+
+.nav-lnk.active svg { color: #818cf8; }
+
+.sb-foot {
+  margin-top: auto;
+  padding: 14px 16px 16px;
+  border-top: 1px solid #1f2937;
+}
+
+.sb-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.sb-ftxt {
+  font-size: 11px;
+  color: var(--t4);
+}
+
+.sb-gh {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--t3);
+  text-decoration: none;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.sb-gh:hover { color: var(--t2); }
+
+.sb-gh svg {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+}
+
+.sb-logout {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  justify-content: center;
+  padding: 8px 12px;
+  border-radius: 8px;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 500;
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.1);
+  transition: background .15s ease;
+}
+
+.sb-logout:hover {
+  background: rgba(239, 68, 68, 0.18);
+}
+
+.shell-topbar {
+  display: none;
+}
+
+.shell-mobile-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: #111827;
+  border: 1px solid #1f2937;
+  color: #9ca3af;
+}
+
+.shell-mobile-toggle svg { width: 18px; height: 18px; }
+
+.shell-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  padding: 16px;
+  border-radius: 12px;
+  background: rgba(17, 24, 39, 0.5);
+  border: 1px solid #1f2937;
+  overflow: hidden;
+}
+
+#app-content {
+  position: relative;
+}
+
+#app-content > section > header {
+  margin-bottom: 4px;
+}
+
+/* 所有按钮统一圆角 */
+#app-content > section > header button,
+#app-content > section > header a,
+#app-content [data-modal-card="true"] button,
+#app-content [data-delete-card="true"] button,
+#app-content [id$="-modal-root"] button,
+#app-content [id$="-delete-root"] button {
+  border-radius: 8px !important;
+  font-weight: 500 !important;
+  transition: background .15s ease, border-color .15s ease, color .15s ease !important;
+}
+
+/* 次要/outline 按钮 */
+#app-content > section > header button[class*="border-rf-border"][class*="bg-white"],
+#app-content > section > header a[class*="border-rf-border"][class*="bg-white"],
+#app-content [id$="-modal-root"] button[class*="border-rf-border"][class*="bg-white"],
+#app-content [id$="-delete-root"] button[class*="border-rf-border"][class*="bg-white"] {
+  background: #1f2937 !important;
+  border-color: #374151 !important;
+  color: #e5e7eb !important;
+  box-shadow: none !important;
+}
+
+#app-content > section > header button[class*="border-rf-border"][class*="bg-white"]:hover,
+#app-content > section > header a[class*="border-rf-border"][class*="bg-white"]:hover,
+#app-content [id$="-modal-root"] button[class*="border-rf-border"][class*="bg-white"]:hover,
+#app-content [id$="-delete-root"] button[class*="border-rf-border"][class*="bg-white"]:hover {
+  background: #374151 !important;
+  transform: none;
+}
+
+/* 主要按钮（原绿色 → indigo） */
+#app-content > section > header button[class*="bg-[#18c865]"],
+#app-content > section > header a[class*="bg-[#18c865]"],
+#app-content [id$="-modal-root"] button[class*="bg-[#18c865]"],
+#app-content [id$="-delete-root"] button[class*="bg-[#18c865]"],
+#app-content button[class*="bg-[#18c865]"] {
+  background: #6366f1 !important;
+  border-color: #6366f1 !important;
+  color: #fff !important;
+  box-shadow: none !important;
+}
+
+#app-content > section > header button[class*="bg-[#18c865]"]:hover,
+#app-content > section > header a[class*="bg-[#18c865]"]:hover,
+#app-content [id$="-modal-root"] button[class*="bg-[#18c865]"]:hover,
+#app-content [id$="-delete-root"] button[class*="bg-[#18c865]"]:hover,
+#app-content button[class*="bg-[#18c865]"]:hover {
+  background: #4f46e5 !important;
+  border-color: #4f46e5 !important;
+  transform: none;
+}
+
+/* 卡片圆角 */
+#app-content article[class*="rounded-rf"],
+#app-content section[class*="rounded-rf"],
+#app-content div[class*="rounded-rf-lg"][class*="bg-white"],
+#app-content div[class*="rounded-rf-xl"][class*="bg-white"] {
+  border-radius: 10px !important;
+}
+
+/* 白色卡片 → 深色卡片 */
+#app-content article[class*="border-rf-border"][class*="bg-white"],
+#app-content section[class*="border-rf-border"][class*="bg-white"],
+#app-content div[class*="border-rf-border"][class*="bg-white"] {
+  background: #111827 !important;
+  border-color: #1f2937 !important;
+  box-shadow: var(--sh1) !important;
+  backdrop-filter: none !important;
+}
+
+#app-content article[class*="border-rf-border"][class*="bg-white"]:hover,
+#app-content section[class*="border-rf-border"][class*="bg-white"]:hover {
+  box-shadow: var(--sh2) !important;
+}
+
+/* 表单控件 */
+#app-content input[class*="border-rf-border"],
+#app-content textarea[class*="border-rf-border"],
+#app-content select[class*="border-rf-border"] {
+  border-radius: 8px !important;
+  border-color: #374151 !important;
+  background: #1f2937 !important;
+  color: #f3f4f6 !important;
+  box-shadow: none !important;
+}
+
+#app-content input[class*="border-rf-border"]::placeholder,
+#app-content textarea[class*="border-rf-border"]::placeholder {
+  color: #6b7280 !important;
+}
+
+#app-content input[class*="border-rf-border"]:focus,
+#app-content textarea[class*="border-rf-border"]:focus,
+#app-content select[class*="border-rf-border"]:focus {
+  border-color: #6366f1 !important;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2) !important;
+  outline: none !important;
+}
+
+/* Modal 遮罩 */
+#app-content [id$="-modal-root"] > div,
+#app-content [id$="-delete-root"] > div {
+  backdrop-filter: blur(4px);
+}
+
+/* Modal 卡片 */
+#app-content [data-modal-card="true"],
+#app-content [data-delete-card="true"],
+#app-content [id$="-modal-root"] .rounded-rf-xl.bg-white,
+#app-content [id$="-delete-root"] .rounded-rf-xl.bg-white {
+  border-radius: 12px !important;
+  border: 1px solid #1f2937 !important;
+  background: #111827 !important;
+  backdrop-filter: none !important;
+  box-shadow: var(--sh3) !important;
+}
+
+/* Toggle 开关 */
+.tg { display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 4px 0; }
+.tg input { display: none; }
+.tg-tr {
+  width: 36px;
+  height: 20px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 99px;
+  position: relative;
+  transition: background .2s;
+  flex-shrink: 0;
+}
+.tg input:checked + .tg-tr { background: rgba(99, 102, 241, 0.5); }
+.tg-th {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform .2s;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+.tg input:checked + .tg-tr .tg-th { transform: translateX(16px); }
+.tg-lb { font-size: 13px; color: var(--t1); user-select: none; }
+
+/* Toast 容器 */
+.tc {
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 260px;
+  max-width: 380px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  pointer-events: auto;
+  animation: si .22s ease;
+}
+
+.toast svg { flex-shrink: 0; }
+.t-ok { background: rgba(16, 185, 129, 0.15); color: #6ee7b7; border: 1px solid rgba(16, 185, 129, 0.3); }
+.t-err { background: rgba(239, 68, 68, 0.15); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.3); }
+
+.shell-overlay {
+  display: none;
+}
+
+@media (max-width: 980px) {
+  :root {
+    --shell-pad: 14px;
+    --shell-gap: 14px;
+  }
+
+  .app {
+    display: block;
+    padding: var(--shell-pad);
+  }
+
+  .sidebar {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    bottom: 14px;
+    width: min(84vw, 300px);
+    max-height: none;
+    overflow-y: auto;
+    overflow-x: hidden;
+    transform: translateX(calc(-100% - 24px));
+    transition: transform .22s ease;
+    border-radius: 12px;
+  }
+
+  .sb-nav {
+    flex: 0 0 auto;
+    overflow-y: visible;
+  }
+
+  .sb-foot {
+    margin-top: 0;
+  }
+
+  body.shell-nav-open .sidebar { transform: translateX(0); }
+
+  .main { width: 100%; }
+  .shell-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 2px 0 10px;
+  }
+  .shell-mobile-toggle { display: inline-flex; }
+  .shell-stage { padding: 12px; border-radius: 10px; }
+  .shell-overlay {
+    position: fixed;
+    inset: 0;
+    display: block;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s ease;
+    z-index: 30;
+  }
+  body.shell-nav-open .shell-overlay {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+@media (max-width: 640px) {
+  .shell-topbar { padding-bottom: 8px; }
+}
+
+@keyframes si {
+  from { transform: translateY(8px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+/* ── 深色主题全局覆盖：白色/浅色背景 ── */
+
+/* bg-white → gray-900 */
+#app-content .bg-white {
+  background-color: #111827 !important;
+}
+
+/* bg-white/* 透明变体 → gray-900 半透明 */
+#app-content .bg-white\/70,
+#app-content .bg-white\/72,
+#app-content .bg-white\/78,
+#app-content .bg-white\/80,
+#app-content .bg-white\/82,
+#app-content .bg-white\/84,
+#app-content .bg-white\/85,
+#app-content .bg-white\/86,
+#app-content .bg-white\/88,
+#app-content .bg-white\/90,
+#app-content .bg-white\/92,
+#app-content .bg-white\/95 {
+  background-color: rgba(17, 24, 39, 0.9) !important;
+}
+
+/* bg-slate-50 / bg-gray-50 → gray-800 */
+#app-content .bg-slate-50,
+#app-content .bg-slate-100,
+#app-content .bg-gray-50,
+#app-content .bg-gray-100,
+#app-content .bg-zinc-50 {
+  background-color: #1f2937 !important;
+}
+
+/* bg-slate-50/* 透明变体 */
+#app-content .bg-slate-50\/40,
+#app-content .bg-slate-50\/50,
+#app-content .bg-slate-50\/60 {
+  background-color: rgba(31, 41, 55, 0.5) !important;
+}
+
+/* hover 状态 */
+#app-content .hover\:bg-white:hover {
+  background-color: #1f2937 !important;
+}
+#app-content .hover\:bg-slate-50:hover,
+#app-content .hover\:bg-slate-100:hover,
+#app-content .hover\:bg-gray-50:hover,
+#app-content .hover\:bg-gray-100:hover {
+  background-color: #374151 !important;
+}
+#app-content .hover\:bg-slate-50\/60:hover {
+  background-color: rgba(55, 65, 81, 0.5) !important;
+}
+
+/* 深色文字 → 浅色（用于被强制置于深色卡片上的 hardcoded 颜色） */
+#app-content .text-gray-900,
+#app-content .text-gray-800,
+#app-content .text-slate-900,
+#app-content .text-slate-800 {
+  color: #f3f4f6 !important;
+}
+#app-content .text-gray-700,
+#app-content .text-slate-700,
+#app-content .text-gray-600,
+#app-content .text-slate-600 {
+  color: #9ca3af !important;
+}
+#app-content .text-gray-500,
+#app-content .text-slate-500 {
+  color: #6b7280 !important;
+}
+
+/* 浅色边框 → 深色边框 */
+#app-content .border-gray-200,
+#app-content .border-slate-200,
+#app-content .border-gray-100,
+#app-content .border-slate-100,
+#app-content .border-white\/60,
+#app-content .border-white\/65,
+#app-content .border-white\/70,
+#app-content .border-white\/72 {
+  border-color: #374151 !important;
+}
+#app-content .border-gray-300,
+#app-content .border-slate-300 {
+  border-color: #4b5563 !important;
+}
+
+/* 表格行 */
+#app-content tr.bg-white,
+#app-content tbody tr.bg-white {
+  background-color: transparent !important;
+}
+#app-content thead tr,
+#app-content th {
+  background-color: #1f2937 !important;
+  color: #9ca3af !important;
+  border-color: #374151 !important;
+}
+#app-content tbody tr:hover {
+  background-color: rgba(55, 65, 81, 0.4) !important;
+}
+#app-content td {
+  border-color: #1f2937 !important;
+  color: #f3f4f6 !important;
+}
+
+/* 错误/警告行的浅色背景 */
+#app-content .bg-red-50\/30,
+#app-content .bg-red-50\/50,
+#app-content .bg-red-50 {
+  background-color: rgba(239, 68, 68, 0.1) !important;
+}
+#app-content .bg-amber-50,
+#app-content .bg-yellow-50 {
+  background-color: rgba(245, 158, 11, 0.1) !important;
+}
+#app-content .bg-green-50,
+#app-content .bg-emerald-50 {
+  background-color: rgba(16, 185, 129, 0.1) !important;
+}
+#app-content .bg-blue-50 {
+  background-color: rgba(59, 130, 246, 0.1) !important;
+}
+
+/* Textarea / select 背景 */
+#app-content textarea.bg-white,
+#app-content select.bg-white,
+#app-content input.bg-white {
+  background-color: #1f2937 !important;
+  border-color: #374151 !important;
+  color: #f3f4f6 !important;
+}
+#app-content textarea.bg-slate-50,
+#app-content input.bg-slate-50 {
+  background-color: #1f2937 !important;
+  color: #f3f4f6 !important;
+}
+
+/* Divide 分割线颜色 */
+#app-content .divide-gray-100 > :not([hidden]) ~ :not([hidden]),
+#app-content .divide-slate-100 > :not([hidden]) ~ :not([hidden]),
+#app-content .divide-gray-200 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #1f2937 !important;
+}
+
+/* bg-slate-100 / bg-slate-200 → gray-700/800 (icon 容器、badge、进度条背景等) */
+#app-content .bg-slate-100,
+#app-content .bg-slate-200 {
+  background-color: #374151 !important;
+}
+#app-content .bg-slate-200\/70,
+#app-content .bg-slate-100\/70 {
+  background-color: rgba(55, 65, 81, 0.7) !important;
+}
+#app-content .hover\:bg-slate-100:hover,
+#app-content .hover\:bg-slate-200:hover {
+  background-color: #4b5563 !important;
+}
+/* text-slate-600 用于 badge 文字，在深色背景上改为浅色 */
+#app-content .bg-slate-100 .text-slate-600,
+#app-content .text-slate-600 {
+  color: #d1d5db !important;
+}
+
+/* bg-blue-100 / text-blue-600 → 深色蓝 badge */
+#app-content .bg-blue-100 {
+  background-color: rgba(59, 130, 246, 0.15) !important;
+}
+#app-content .text-blue-600,
+#app-content .text-blue-700 {
+  color: #93c5fd !important;
+}
+
+/* 全局 focus 颜色：emerald → indigo */
+#app-content input:focus,
+#app-content textarea:focus,
+#app-content select:focus {
+  border-color: #6366f1 !important;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2) !important;
+  outline: none !important;
+}
+
+/* focus:bg-white（data_migration 里的 SQL 框） */
+#app-content textarea:focus.focus\:bg-white,
+#app-content input:focus.focus\:bg-white {
+  background-color: #1f2937 !important;
+}
+
+/* bg-white/* 更多变体 */
+#app-content .bg-white\/55,
+#app-content .bg-white\/60,
+#app-content .bg-white\/65,
+#app-content .bg-white\/68 {
+  background-color: rgba(17, 24, 39, 0.85) !important;
+}
+
+/* 进度条背景 */
+#app-content .bg-slate-200.rounded-full {
+  background-color: #374151 !important;
+}
+
+/* animate-pulse 骨架屏 */
+#app-content .animate-pulse .bg-slate-100,
+#app-content .animate-pulse .bg-gray-100 {
+  background-color: #1f2937 !important;
+}
+
+/* ── Badge 颜色（bg-*-100 系列）→ 深色半透明 ── */
+#app-content .bg-green-100 {
+  background-color: rgba(16, 185, 129, 0.15) !important;
+}
+#app-content .bg-blue-100 {
+  background-color: rgba(59, 130, 246, 0.15) !important;
+}
+#app-content .bg-red-100 {
+  background-color: rgba(239, 68, 68, 0.15) !important;
+}
+#app-content .bg-orange-100 {
+  background-color: rgba(249, 115, 22, 0.15) !important;
+}
+#app-content .bg-purple-100,
+#app-content .bg-violet-100 {
+  background-color: rgba(139, 92, 246, 0.15) !important;
+}
+#app-content .bg-yellow-100,
+#app-content .bg-amber-100 {
+  background-color: rgba(245, 158, 11, 0.15) !important;
+}
+
+/* Badge 文字颜色 → 更亮以确保对比度 */
+#app-content .text-green-700,
+#app-content .text-green-600 {
+  color: #6ee7b7 !important;
+}
+#app-content .text-blue-600 {
+  color: #93c5fd !important;
+}
+#app-content .text-blue-500 {
+  color: #60a5fa !important;
+}
+#app-content .text-red-600,
+#app-content .text-red-500 {
+  color: #fca5a5 !important;
+}
+#app-content .text-orange-600,
+#app-content .text-orange-500 {
+  color: #fdba74 !important;
+}
+#app-content .text-emerald-600 {
+  color: #6ee7b7 !important;
+}
+#app-content .text-purple-600,
+#app-content .text-violet-600 {
+  color: #c4b5fd !important;
+}
+#app-content .text-amber-600,
+#app-content .text-amber-500 {
+  color: #fcd34d !important;
+}
+
+/* URL chip 及其 opacity 变体 */
+#app-content .bg-slate-100\/80,
+#app-content .bg-slate-100\/70,
+#app-content .bg-slate-100\/60 {
+  background-color: rgba(55, 65, 81, 0.5) !important;
+}
+#app-content .hover\:bg-slate-200\/70:hover,
+#app-content .hover\:bg-slate-100\/80:hover {
+  background-color: rgba(75, 85, 99, 0.6) !important;
+}
+
+/* 图标按钮 hover（sync / delete） */
+#app-content .hover\:bg-blue-50:hover {
+  background-color: rgba(59, 130, 246, 0.15) !important;
+}
+#app-content .hover\:text-blue-500:hover {
+  color: #60a5fa !important;
+}
+#app-content .hover\:bg-red-50:hover {
+  background-color: rgba(239, 68, 68, 0.12) !important;
+}
+#app-content .hover\:text-red-500:hover {
+  color: #fca5a5 !important;
+}
+
+/* Spinner 颜色（JS 模板中 border-[#18c865]） */
+#app-content .border-\[\#18c865\] {
+  border-color: #6366f1 !important;
+}

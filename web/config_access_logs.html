@@ -1,0 +1,617 @@
+<section id="config-logs-page" class="space-y-4">
+    <header class="flex justify-end">
+      <div class="flex flex-wrap items-center gap-2">
+        <button type="button" data-action="refresh" class="inline-flex items-center gap-1.5 rounded-rf border border-[#18c865] bg-[#18c865] px-3.5 py-[7px] text-[13.5px] font-medium leading-[1.2] text-white transition hover:border-[#15b25a] hover:bg-[#15b25a]">
+          <span data-role="refresh-icon"><svg class="h-[14px] w-[14px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"></path><path d="M3 12a9 9 0 0 1 15.55-6.36L21 8"></path><path d="M3 22v-6h6"></path><path d="M21 12a9 9 0 0 1-15.55 6.36L3 16"></path></svg></span>
+          刷新
+        </button>
+      </div>
+    </header>
+
+    <div id="config-logs-content"></div>
+    <div id="config-logs-toast-root" class="pointer-events-none fixed bottom-[18px] left-[18px] z-[9999] flex flex-col gap-2"></div>
+  </section>
+
+  <script>
+    (() => {
+      const root = document.getElementById('config-logs-page');
+      if (!root) return;
+
+      const contentEl = document.getElementById('config-logs-content');
+      const toastRoot = document.getElementById('config-logs-toast-root');
+
+      const defaultFilters = {
+        policy_id: '',
+        success: '',
+        cache_hit: '',
+        keyword: '',
+      };
+
+      const state = {
+        logs: [],
+        policies: [],
+        filters: { ...defaultFilters },
+        loading: true,
+        refreshing: false,
+        toasts: [],
+        quickFilter: 'all',
+        virtualScroll: null,
+      };
+
+      // ==================== 虚拟滚动实现 ====================
+      function createVirtualScroll(container, getItems, renderItem, options = {}) {
+        const {
+          estimatedItemHeight = 120,  // 估算的每个项目高度
+          bufferSize = 3,             // 额外渲染的项目数（上下各bufferSize个）
+          overscan = 100,             // 额外滚动距离（px）
+        } = options;
+
+        let scrollTop = 0;
+        let viewportHeight = container.clientHeight;
+        let itemHeights = new Map();  // 缓存已测量的项目高度
+        let rafId = null;
+        let isScrolling = false;
+        let scrollTimeout = null;
+
+        // 获取总高度
+        function getTotalHeight() {
+          const items = getItems();
+          if (items.length === 0) return 0;
+          let total = 0;
+          for (let i = 0; i < items.length; i++) {
+            total += itemHeights.get(i) || estimatedItemHeight;
+          }
+          return total;
+        }
+
+        // 获取指定索引之前的累积高度
+        function getOffsetBeforeIndex(index) {
+          let offset = 0;
+          for (let i = 0; i < index; i++) {
+            offset += itemHeights.get(i) || estimatedItemHeight;
+          }
+          return offset;
+        }
+
+        // 查找指定偏移量对应的索引
+        function findIndexByOffset(offset) {
+          const items = getItems();
+          if (items.length === 0) return 0;
+          let currentOffset = 0;
+          for (let i = 0; i < items.length; i++) {
+            const height = itemHeights.get(i) || estimatedItemHeight;
+            if (currentOffset + height > offset) return i;
+            currentOffset += height;
+          }
+          return items.length - 1;
+        }
+
+        // 创建幽灵元素撑开容器高度
+        const ghost = document.createElement('div');
+        ghost.style.position = 'absolute';
+        ghost.style.visibility = 'hidden';
+        ghost.style.pointerEvents = 'none';
+        ghost.style.width = '1px';
+        container.style.position = 'relative';
+        container.appendChild(ghost);
+
+        // 创建视口容器
+        const viewport = document.createElement('div');
+        viewport.className = 'grid gap-2';
+        container.appendChild(viewport);
+
+        // 渲染可见项目
+        function render() {
+          const items = getItems();
+          if (items.length === 0) {
+            ghost.style.height = '0';
+            viewport.innerHTML = '';
+            return;
+          }
+
+          // 计算可见范围
+          const startIndex = Math.max(0, findIndexByOffset(scrollTop) - bufferSize);
+          const endIndex = Math.min(
+            items.length - 1,
+            findIndexByOffset(scrollTop + viewportHeight + overscan) + bufferSize
+          );
+
+          // 更新幽灵元素高度
+          ghost.style.height = getTotalHeight() + 'px';
+
+          // 渲染可见项目
+          let html = '';
+          let offset = getOffsetBeforeIndex(startIndex);
+
+          for (let i = startIndex; i <= endIndex; i++) {
+            const item = items[i];
+            const itemHtml = renderItem(item, i);
+            // 插入 data-index 属性用于测量高度
+            html = html + itemHtml.replace(/^<article/, '<article data-index="' + i + '"');
+          }
+
+          viewport.innerHTML = html;
+          viewport.style.transform = `translateY(${offset}px)`;
+
+          // 测量实际高度
+          requestAnimationFrame(() => {
+            const elements = viewport.querySelectorAll('[data-index]');
+            let needsUpdate = false;
+            elements.forEach((el) => {
+              const index = parseInt(el.dataset.index, 10);
+              const height = el.offsetHeight;
+              if (!itemHeights.has(index) || itemHeights.get(index) !== height) {
+                itemHeights.set(index, height);
+                needsUpdate = true;
+              }
+            });
+            // 如果高度有变化，重新渲染
+            if (needsUpdate && !isScrolling) {
+              render();
+            }
+          });
+        }
+
+        // 滚动事件处理
+        function onScroll() {
+          scrollTop = container.scrollTop;
+          isScrolling = true;
+
+          if (scrollTimeout) clearTimeout(scrollTimeout);
+          scrollTimeout = setTimeout(() => {
+            isScrolling = false;
+          }, 150);
+
+          if (rafId) cancelAnimationFrame(rafId);
+          rafId = requestAnimationFrame(render);
+        }
+
+        // 监听滚动
+        container.addEventListener('scroll', onScroll, { passive: true });
+
+        // 监听窗口大小变化
+        const resizeObserver = new ResizeObserver(() => {
+          viewportHeight = container.clientHeight;
+          render();
+        });
+        resizeObserver.observe(container);
+
+        // 初始渲染
+        render();
+
+        // 返回控制对象
+        return {
+          destroy: () => {
+            container.removeEventListener('scroll', onScroll);
+            resizeObserver.disconnect();
+            if (rafId) cancelAnimationFrame(rafId);
+            if (scrollTimeout) clearTimeout(scrollTimeout);
+            ghost.remove();
+            viewport.remove();
+          },
+          update: () => {
+            itemHeights.clear();
+            render();
+          },
+          scrollToTop: () => {
+            container.scrollTop = 0;
+          },
+        };
+      }
+
+      function request(url) {
+        return fetch(url).then(async (res) => {
+          if (!res.ok) {
+            const text = await res.text();
+            throw new Error(text || ('请求失败: ' + res.status));
+          }
+          return res.json();
+        });
+      }
+
+      function escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+          '&': '&amp;',
+          '<': '&lt;',
+          '>': '&gt;',
+          '"': '&quot;',
+          "'": '&#39;',
+        })[char]);
+      }
+
+      function addToast(message, type = 'ok') {
+        const id = Date.now() + Math.random();
+        state.toasts.push({ id, message, type });
+        renderToasts();
+        window.setTimeout(() => {
+          state.toasts = state.toasts.filter((item) => item.id !== id);
+          renderToasts();
+        }, 3200);
+      }
+
+      function renderToasts() {
+        toastRoot.innerHTML = state.toasts.map((toast) => `
+          <div class="pointer-events-auto flex min-w-[260px] max-w-[380px] items-center gap-[9px] rounded-rf-xl border px-[14px] py-[11px] text-[13.5px] font-medium shadow-rf3 ${toast.type === 'ok' ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-600'}">
+            ${toast.type === 'ok' ? icons.check : icons.alert}
+            <span>${escapeHtml(toast.message)}</span>
+          </div>
+        `).join('');
+      }
+
+      function badge(tone, text) {
+        const toneClass = {
+          green: 'bg-green-100 text-green-700',
+          red: 'bg-red-100 text-red-600',
+          blue: 'bg-blue-100 text-blue-600',
+        }[tone] || 'bg-slate-100 text-slate-600';
+        const dotClass = {
+          green: 'bg-green-600',
+          red: 'bg-red-500',
+          blue: 'bg-blue-500',
+        }[tone] || 'bg-slate-500';
+        return `<span class="inline-flex items-center gap-1 rounded-full px-2 py-[2px] text-[11.5px] font-semibold ${toneClass}"><span class="h-[5px] w-[5px] shrink-0 rounded-full ${dotClass}"></span>${escapeHtml(text)}</span>`;
+      }
+
+      function formatDate(value) {
+        if (!value) return '时间未知';
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return '时间未知';
+        return date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0') + ' ' + String(date.getHours()).padStart(2, '0') + ':' + String(date.getMinutes()).padStart(2, '0');
+      }
+
+      function visibleLogs() {
+        const keyword = state.filters.keyword.trim().toLowerCase();
+        if (!keyword) return state.logs;
+        return state.logs.filter((log) => {
+          const haystack = [
+            log.policy_name,
+            log.client_ip,
+            log.user_agent,
+            log.token,
+            log.error_message,
+          ].filter(Boolean).join(' ').toLowerCase();
+          return haystack.includes(keyword);
+        });
+      }
+
+      function currentStats() {
+        const logs = visibleLogs();
+        const total = logs.length;
+        const successCount = logs.filter((log) => log.success).length;
+        const failCount = total - successCount;
+        const cacheHitCount = logs.filter((log) => log.cache_hit).length;
+        return { total, successCount, failCount, cacheHitCount, logs };
+      }
+
+      function renderLogItem(log) {
+        const displayTitle = log.policy_name || log.token || '未知来源';
+        const hasError = !log.success && log.error_message;
+        const rowClass = hasError ? 'border-red-200 bg-red-50/30' : 'border-rf-border bg-white';
+        return `
+          <article class="rounded-[10px] border ${rowClass} px-3 py-2.5 transition hover:shadow-sm">
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2">
+                  <span class="truncate text-[13px] font-semibold text-rf-text">${escapeHtml(displayTitle)}</span>
+                  <div class="flex gap-1.5">
+                    ${log.success
+                      ? '<span class="inline-flex h-5 items-center gap-1 rounded-[4px] bg-green-100 px-1.5 text-[11px] font-semibold text-green-700"><svg class="h-[9px] w-[9px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>成功</span>'
+                      : '<span class="inline-flex h-5 items-center gap-1 rounded-[4px] bg-red-100 px-1.5 text-[11px] font-semibold text-red-600"><svg class="h-[9px] w-[9px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>失败</span>'
+                    }
+                    <span class="inline-flex h-5 items-center gap-1 rounded-[4px] ${log.cache_hit ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-500'} px-1.5 text-[11px] font-medium">
+                      ${log.cache_hit ? '<svg class="h-[9px] w-[9px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h20"></path><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-6"></path><path d="M12 2 2 7l10 5 10-5-10-5Z"></path></svg>' : '<svg class="h-[9px] w-[9px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path><path d="M16 21h5v-5"></path></svg>'}
+                      ${log.cache_hit ? '缓存' : '实时'}
+                    </span>
+                  </div>
+                </div>
+                <div class="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[11.5px] text-rf-subtle">
+                  <span class="inline-flex items-center gap-1">
+                    <svg class="h-[10px] w-[10px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                    ${formatDate(log.created_at)}
+                  </span>
+                  <span class="inline-flex items-center gap-1">
+                    <svg class="h-[10px] w-[10px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
+                    ${escapeHtml(log.status_code)}
+                  </span>
+                  <span class="inline-flex items-center gap-1">
+                    <svg class="h-[10px] w-[10px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11a9 9 0 0 1 9 9"></path><path d="M4 4a16 16 0 0 1 16 16"></path><circle cx="5" cy="19" r="1"></circle></svg>
+                    ${escapeHtml(log.client_ip || '-')}
+                  </span>
+                  ${log.node_count != null ? `
+                    <span class="inline-flex items-center gap-1">
+                      <svg class="h-[10px] w-[10px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+                      ${log.node_count} 节点
+                    </span>
+                  ` : ''}
+                </div>
+                ${log.token ? `
+                  <div class="mt-1.5 truncate text-[11px] font-mono text-rf-subtle">
+                    <span class="text-rf-muted">token:</span> ${escapeHtml(log.token)}
+                  </div>
+                ` : ''}
+                ${hasError ? `
+                  <div class="mt-2 rounded-[6px] bg-red-50 px-2 py-1.5 text-[11px] leading-[1.4] text-red-600">
+                    ${escapeHtml(log.error_message)}
+                  </div>
+                ` : ''}
+              </div>
+            </div>
+          </article>
+        `;
+      }
+
+      function renderContent() {
+        const { total, successCount, failCount, cacheHitCount, logs } = currentStats();
+        const successRate = total > 0 ? Math.round((successCount / total) * 100) : 0;
+        const cacheRate = total > 0 ? Math.round((cacheHitCount / total) * 100) : 0;
+
+        const hasLogs = logs.length > 0;
+
+        contentEl.innerHTML = `
+          <!-- 筛选器 -->
+          <section class="rounded-rf-lg border border-rf-border bg-white shadow-rf1">
+            <div class="flex items-center justify-between border-b border-rf-border px-[14px] py-[10px]">
+              <div class="flex items-center gap-2">
+                <svg class="h-[14px] w-[14px] text-rf-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>
+                <span class="text-[13px] font-semibold text-rf-text">筛选条件</span>
+              </div>
+              <button type="button" data-action="reset" class="text-[12.5px] font-medium text-rf-muted transition hover:text-rf-text">重置</button>
+            </div>
+            <div class="p-[14px]">
+              <!-- 快速筛选按钮 -->
+              <div class="mb-3 flex flex-wrap gap-2">
+                <button type="button" data-quick-filter="all" class="quick-filter-btn inline-flex items-center gap-1 rounded-[6px] border px-2.5 py-1 text-[12px] font-medium transition ${state.quickFilter === 'all' ? 'border-[#18c865] bg-[#18c865] text-white' : 'border-rf-border bg-white text-rf-text hover:border-[#18c865]'}">
+                  <svg class="h-[11px] w-[11px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+                  全部
+                </button>
+                <button type="button" data-quick-filter="success" class="quick-filter-btn inline-flex items-center gap-1 rounded-[6px] border px-2.5 py-1 text-[12px] font-medium transition ${state.quickFilter === 'success' ? 'border-green-500 bg-green-500 text-white' : 'border-rf-border bg-white text-rf-text hover:border-green-500'}">
+                  <svg class="h-[11px] w-[11px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                  成功
+                </button>
+                <button type="button" data-quick-filter="failed" class="quick-filter-btn inline-flex items-center gap-1 rounded-[6px] border px-2.5 py-1 text-[12px] font-medium transition ${state.quickFilter === 'failed' ? 'border-red-500 bg-red-500 text-white' : 'border-rf-border bg-white text-rf-text hover:border-red-500'}">
+                  <svg class="h-[11px] w-[11px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                  失败
+                </button>
+                <button type="button" data-quick-filter="cached" class="quick-filter-btn inline-flex items-center gap-1 rounded-[6px] border px-2.5 py-1 text-[12px] font-medium transition ${state.quickFilter === 'cached' ? 'border-blue-500 bg-blue-500 text-white' : 'border-rf-border bg-white text-rf-text hover:border-blue-500'}">
+                  <svg class="h-[11px] w-[11px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h20"></path><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-6"></path><path d="M12 2 2 7l10 5 10-5-10-5Z"></path></svg>
+                  缓存命中
+                </button>
+              </div>
+              <!-- 详细筛选 -->
+              <div class="flex flex-wrap gap-3">
+                <div class="min-w-[140px] flex-1">
+                  <label class="mb-1 block text-[11px] font-semibold text-rf-muted">策略</label>
+                  <select data-filter="policy_id" class="w-full rounded-rf border border-rf-border bg-white px-2.5 py-[7px] text-[13px] text-rf-text outline-none transition focus:border-[#18c865] focus:ring-2 focus:ring-[rgba(24,200,101,0.1)]">
+                    <option value="">全部策略</option>
+                    ${state.policies.map((policy) => `<option value="${policy.id}" ${String(state.filters.policy_id) === String(policy.id) ? 'selected' : ''}>${escapeHtml(policy.name)}</option>`).join('')}
+                  </select>
+                </div>
+                <div class="min-w-[180px] flex-[2]">
+                  <label class="mb-1 block text-[11px] font-semibold text-rf-muted">关键词</label>
+                  <input data-filter="keyword" type="text" value="${escapeHtml(state.filters.keyword)}" placeholder="搜索策略名 / IP / UA / token / 错误" class="w-full rounded-rf border border-rf-border bg-white px-2.5 py-[7px] text-[13px] text-rf-text outline-none transition focus:border-[#18c865] focus:ring-2 focus:ring-[rgba(24,200,101,0.1)] placeholder:text-rf-subtle">
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- 统计卡片 -->
+          <section class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <article class="rounded-rf-lg border border-rf-border bg-white px-3 py-2 shadow-rf1">
+              <div class="flex items-center justify-between">
+                <div>
+                  <div class="text-[11px] font-semibold uppercase text-rf-subtle tracking-wider">当前结果</div>
+                  <div class="mt-1 text-xl font-bold text-rf-text">${total}</div>
+                </div>
+                <div class="flex h-8 w-8 items-center justify-center rounded-[6px] bg-slate-100 text-slate-500">
+                  <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                </div>
+              </div>
+            </article>
+            <article class="rounded-rf-lg border border-rf-border bg-white px-3 py-2 shadow-rf1">
+              <div class="flex items-center justify-between">
+                <div>
+                  <div class="text-[11px] font-semibold uppercase text-rf-subtle tracking-wider">成功请求</div>
+                  <div class="mt-1 flex items-baseline gap-1">
+                    <span class="text-xl font-bold text-green-600">${successCount}</span>
+                    ${total > 0 ? `<span class="text-[11px] font-medium text-green-600">${successRate}%</span>` : ''}
+                  </div>
+                </div>
+                <div class="flex h-8 w-8 items-center justify-center rounded-[6px] bg-green-50 text-green-600">
+                  <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                </div>
+              </div>
+            </article>
+            <article class="rounded-rf-lg border border-rf-border bg-white px-3 py-2 shadow-rf1">
+              <div class="flex items-center justify-between">
+                <div>
+                  <div class="text-[11px] font-semibold uppercase text-rf-subtle tracking-wider">失败请求</div>
+                  <div class="mt-1 flex items-baseline gap-1">
+                    <span class="text-xl font-bold ${failCount > 0 ? 'text-red-600' : 'text-rf-text'}">${failCount}</span>
+                    ${failCount > 0 ? `<span class="inline-flex h-4 items-center rounded-[4px] bg-red-100 px-1 text-[10px] font-medium text-red-600">需排查</span>` : ''}
+                  </div>
+                </div>
+                <div class="flex h-8 w-8 items-center justify-center rounded-[6px] ${failCount > 0 ? 'bg-red-50 text-red-600' : 'bg-slate-100 text-slate-400'}">
+                  <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                </div>
+              </div>
+            </article>
+            <article class="rounded-rf-lg border border-rf-border bg-white px-3 py-2 shadow-rf1">
+              <div class="flex items-center justify-between">
+                <div>
+                  <div class="text-[11px] font-semibold uppercase text-rf-subtle tracking-wider">缓存命中</div>
+                  <div class="mt-1 flex items-baseline gap-1">
+                    <span class="text-xl font-bold text-blue-600">${cacheHitCount}</span>
+                    ${total > 0 ? `<span class="text-[11px] font-medium text-blue-600">${cacheRate}%</span>` : ''}
+                  </div>
+                </div>
+                <div class="flex h-8 w-8 items-center justify-center rounded-[6px] bg-blue-50 text-blue-600">
+                  <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h20"></path><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-6"></path><path d="M12 2 2 7l10 5 10-5-10-5Z"></path></svg>
+                </div>
+              </div>
+            </article>
+          </section>
+
+          <!-- 日志列表 -->
+          <section class="rounded-rf-lg border border-rf-border bg-white shadow-rf1">
+            <div class="flex items-center gap-2 border-b border-rf-border px-[14px] py-[10px]">
+              <svg class="h-[14px] w-[14px] text-rf-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+              <span class="text-[13px] font-semibold text-rf-text">日志列表</span>
+              ${!state.loading && hasLogs ? `<span class="text-[12px] text-rf-muted">共 ${logs.length} 条</span>` : ''}
+            </div>
+            <div id="virtual-scroll-container" class="max-h-[600px] overflow-auto px-[14px] py-[14px]">
+              ${state.loading ? `
+                <div class="flex flex-col items-center justify-center py-16 text-center">
+                  <div class="mb-3 flex h-10 w-10 animate-pulse items-center justify-center rounded-[10px] bg-slate-100">
+                    <svg class="h-5 w-5 text-rf-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                  </div>
+                  <div class="text-[14px] font-semibold text-rf-text">正在加载日志...</div>
+                  <div class="mt-1 text-[12px] text-rf-subtle">请稍候</div>
+                </div>
+              ` : !hasLogs ? `
+                <div class="flex flex-col items-center justify-center py-16 text-center">
+                  <div class="mb-3 flex h-10 w-10 items-center justify-center rounded-[10px] bg-slate-100">
+                    <svg class="h-5 w-5 text-rf-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                  </div>
+                  <div class="text-[14px] font-semibold text-rf-text">暂无访问日志</div>
+                  <div class="mt-1 max-w-[280px] text-[12px] text-rf-subtle">尝试调整筛选条件，或让客户端请求一次订阅链接后再查看</div>
+                </div>
+              ` : ''}
+            </div>
+          </section>
+        `;
+
+        // 初始化虚拟滚动
+        if (hasLogs && !state.loading) {
+          const container = document.getElementById('virtual-scroll-container');
+          if (container) {
+            if (state.virtualScroll) {
+              state.virtualScroll.destroy();
+            }
+            state.virtualScroll = createVirtualScroll(
+              container,
+              visibleLogs,
+              (log) => renderLogItem(log),
+              { estimatedItemHeight: 120, bufferSize: 3, overscan: 100 }
+            );
+          }
+        }
+      }
+
+      async function loadPolicies() {
+        const res = await request('/api/config-policies');
+        state.policies = res.data || [];
+      }
+
+      async function loadLogs(nextFilters, silent) {
+        const active = nextFilters || state.filters;
+        if (silent) {
+          state.refreshing = true;
+        } else {
+          state.loading = true;
+        }
+        updateRefreshButton();
+        renderContent();
+        try {
+          const params = new URLSearchParams();
+          if (active.policy_id) params.set('policy_id', active.policy_id);
+          if (active.success) params.set('success', active.success);
+          if (active.cache_hit) params.set('cache_hit', active.cache_hit);
+          const res = await request('/api/config-access-logs?' + params.toString());
+          state.logs = res.data || [];
+        } catch (err) {
+          addToast('加载访问日志失败：' + err.message, 'err');
+        } finally {
+          state.loading = false;
+          state.refreshing = false;
+          updateRefreshButton();
+          renderContent();
+        }
+      }
+
+      function updateRefreshButton() {
+        const icon = root.querySelector('[data-role="refresh-icon"]');
+        if (!icon) return;
+        icon.innerHTML = state.refreshing
+          ? '<span class="inline-block h-[14px] w-[14px] animate-spin rounded-full border-2 border-current border-t-transparent"></span>'
+          : '<svg class="h-[14px] w-[14px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"></path><path d="M3 12a9 9 0 0 1 15.55-6.36L21 8"></path><path d="M3 22v-6h6"></path><path d="M21 12a9 9 0 0 1-15.55 6.36L3 16"></path></svg>';
+      }
+
+      async function applyFilters() {
+        await loadLogs(state.filters, true);
+        addToast('访问日志已刷新');
+      }
+
+      async function updateServerFilters(patch) {
+        state.filters = { ...state.filters, ...patch };
+        await loadLogs(state.filters, true);
+      }
+
+      async function resetFilters() {
+        state.filters = { ...defaultFilters };
+        state.quickFilter = 'all';
+        await loadLogs(state.filters, true);
+      }
+
+      async function applyQuickFilter(filterType) {
+        state.quickFilter = filterType;
+        switch (filterType) {
+          case 'all':
+            state.filters.success = '';
+            state.filters.cache_hit = '';
+            break;
+          case 'success':
+            state.filters.success = 'true';
+            state.filters.cache_hit = '';
+            break;
+          case 'failed':
+            state.filters.success = 'false';
+            state.filters.cache_hit = '';
+            break;
+          case 'cached':
+            state.filters.success = '';
+            state.filters.cache_hit = 'true';
+            break;
+        }
+        await loadLogs(state.filters, true);
+      }
+
+      root.addEventListener('click', async (event) => {
+        const target = event.target.closest('[data-action], [data-quick-filter]');
+        if (!target) return;
+        if (target.dataset.action === 'refresh') await applyFilters();
+        if (target.dataset.action === 'reset') await resetFilters();
+        if (target.dataset.quickFilter) await applyQuickFilter(target.dataset.quickFilter);
+      });
+
+      contentEl.addEventListener('change', async (event) => {
+        const target = event.target;
+        if (!target.matches('[data-filter]')) return;
+        const name = target.dataset.filter;
+        if (name === 'keyword') return;
+        await updateServerFilters({ [name]: target.value });
+      });
+
+      contentEl.addEventListener('input', (event) => {
+        const target = event.target;
+        if (!target.matches('[data-filter="keyword"]')) return;
+        state.filters.keyword = target.value;
+        if (state.virtualScroll) {
+          state.virtualScroll.update();
+        }
+      });
+
+      const icons = {
+        check: '<svg class="h-[15px] w-[15px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>',
+        alert: '<svg class="h-[15px] w-[15px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"></path><path d="M12 17h.01"></path><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path></svg>',
+      };
+
+      renderToasts();
+      Promise.all([loadPolicies(), loadLogs(state.filters, false)]).catch((err) => {
+        addToast('初始化失败：' + err.message, 'err');
+        state.loading = false;
+        state.refreshing = false;
+        updateRefreshButton();
+        renderContent();
+      });
+    })();
+  </script>
