@@ -136,6 +136,21 @@ if [ "$DOMAIN" = ":80" ]; then
   BASE_URL="http://$HOST_IP"
 else
   BASE_URL="https://$DOMAIN"
+  # 检查域名 DNS 解析是否指向本机
+  HOST_IP=$(ip route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}' | head -n1)
+  [ -z "${HOST_IP:-}" ] && HOST_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+  if [ -n "${HOST_IP:-}" ]; then
+    RESOLVED_IP=$(getent hosts "$DOMAIN" 2>/dev/null | awk '{print $1}' | head -n1)
+    if [ -z "$RESOLVED_IP" ]; then
+      log "⚠️  警告：域名 $DOMAIN 无法解析，请确认 DNS 记录已生效。"
+      log "   Caddy 将无法自动签发 HTTPS 证书，服务可能无法访问。"
+    elif [ "$RESOLVED_IP" != "$HOST_IP" ]; then
+      log "⚠️  警告：域名 $DOMAIN 解析到 $RESOLVED_IP，但本机 IP 为 $HOST_IP。"
+      log "   请检查 DNS A 记录是否正确指向本机。"
+    else
+      log "✓  DNS 解析正常：$DOMAIN → $RESOLVED_IP"
+    fi
+  fi
 fi
 
 POSTGRES_DB=$(read_kv POSTGRES_DB)
