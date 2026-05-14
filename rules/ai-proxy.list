@@ -1,0 +1,55 @@
+# OpenAI / ChatGPT
+DOMAIN-SUFFIX,openai.com
+DOMAIN-SUFFIX,chatgpt.com
+DOMAIN-SUFFIX,oaistatic.com
+DOMAIN-SUFFIX,oaiusercontent.com
+DOMAIN-SUFFIX,sora.com
+
+# Anthropic / Claude
+DOMAIN-SUFFIX,anthropic.com
+DOMAIN-SUFFIX,claude.ai
+
+# Google Gemini
+DOMAIN-SUFFIX,gemini.google.com
+DOMAIN-SUFFIX,generativelanguage.googleapis.com
+DOMAIN-SUFFIX,makersuite.google.com
+DOMAIN-SUFFIX,aistudio.google.com
+
+# Microsoft Copilot / Azure OpenAI
+DOMAIN-SUFFIX,copilot.microsoft.com
+DOMAIN-SUFFIX,bing.com
+DOMAIN-SUFFIX,azureopenai.net
+DOMAIN-KEYWORD,openai.azure.com
+
+# Grok / xAI
+DOMAIN-SUFFIX,x.ai
+DOMAIN-SUFFIX,grok.com
+
+# Perplexity
+DOMAIN-SUFFIX,perplexity.ai
+
+# Midjourney
+DOMAIN-SUFFIX,midjourney.com
+
+# Groq
+DOMAIN-SUFFIX,groq.com
+
+# Hugging Face
+DOMAIN-SUFFIX,huggingface.co
+
+# Cohere
+DOMAIN-SUFFIX,cohere.com
+DOMAIN-SUFFIX,cohere.ai
+
+# Mistral
+DOMAIN-SUFFIX,mistral.ai
+
+# DeepSeek
+DOMAIN-SUFFIX,deepseek.com
+
+# Poe
+DOMAIN-SUFFIX,poe.com
+
+# Character.AI
+DOMAIN-SUFFIX,character.ai
+DOMAIN-SUFFIX,character.com
