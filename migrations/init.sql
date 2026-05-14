@@ -45,13 +45,13 @@ CREATE TABLE templates (
     name VARCHAR(255) NOT NULL UNIQUE,
     description TEXT,
     content TEXT NOT NULL,
-    target VARCHAR(20) NOT NULL DEFAULT 'clash',
+    target VARCHAR(20) NOT NULL DEFAULT 'clash-mihomo',
     tags TEXT[] DEFAULT '{}',
     is_public BOOLEAN NOT NULL DEFAULT false,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT templates_target_check
-        CHECK (target IN ('clash', 'clash_meta', 'stash', 'surge', 'sing_box', 'loon', 'shadowrocket'))
+        CHECK (target IN ('clash-mihomo', 'stash', 'surge', 'sing-box', 'loon', 'shadowrocket'))
 );
 
 CREATE INDEX idx_templates_name ON templates(name);
@@ -79,7 +79,7 @@ CREATE TABLE rule_sources (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT rule_sources_source_format_check
-        CHECK (source_format IN ('surge', 'clash-classical', 'clash-domain', 'clash-ipcidr', 'domain-list', 'ip-list'))
+        CHECK (source_format IN ('surge', 'clash-classical', 'domain-list', 'ip-list'))
 );
 
 CREATE INDEX idx_rule_sources_name ON rule_sources(name);
@@ -98,7 +98,7 @@ CREATE TABLE config_policies (
     subscription_ids BIGINT[] NOT NULL DEFAULT '{}',
     node_ids BIGINT[] NOT NULL DEFAULT '{}',
     template_name VARCHAR(255),
-    target VARCHAR(20) NOT NULL DEFAULT 'clash',
+    target VARCHAR(20) NOT NULL DEFAULT 'clash-mihomo',
     node_filters JSONB DEFAULT '{}',
     enabled BOOLEAN NOT NULL DEFAULT true,
     tags TEXT[] DEFAULT '{}',
@@ -106,7 +106,7 @@ CREATE TABLE config_policies (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT config_policies_target_check
-        CHECK (target IN ('clash-meta', 'stash', 'surge', 'sing-box'))
+        CHECK (target IN ('clash-mihomo', 'stash', 'surge', 'sing-box'))
 );
 
 CREATE INDEX idx_config_policies_name ON config_policies(name);
@@ -185,3 +185,39 @@ COMMENT ON COLUMN nodes.protocol IS '协议类型：trojan, vmess, vless, ss, wi
 COMMENT ON COLUMN nodes.config IS '协议特定配置（密码、UUID 等），JSON 格式';
 COMMENT ON COLUMN nodes.source_id IS '订阅 ID；为空表示手动添加节点';
 COMMENT ON COLUMN nodes.last_synced_at IS '最后同步时间（订阅节点）';
+
+CREATE TABLE backup_settings (
+    id INTEGER PRIMARY KEY DEFAULT 1,
+    enabled BOOLEAN NOT NULL DEFAULT false,
+    r2_account_id TEXT NOT NULL DEFAULT '',
+    r2_access_key_id TEXT NOT NULL DEFAULT '',
+    r2_secret_access_key TEXT NOT NULL DEFAULT '',
+    r2_bucket_name TEXT NOT NULL DEFAULT '',
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT backup_settings_singleton CHECK (id = 1)
+);
+
+INSERT INTO backup_settings (id) VALUES (1);
+
+CREATE TABLE backup_records (
+    id BIGSERIAL PRIMARY KEY,
+    file_key TEXT NOT NULL DEFAULT '',
+    file_size BIGINT NOT NULL DEFAULT 0,
+    status VARCHAR(20) NOT NULL DEFAULT 'success',
+    error_message TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_backup_records_created_at ON backup_records(created_at DESC);
+
+CREATE TABLE app_settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
+CREATE TABLE admin_users (
+    id            BIGSERIAL PRIMARY KEY,
+    username      TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    created_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

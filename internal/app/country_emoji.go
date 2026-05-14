@@ -11,7 +11,7 @@ var countryRules = []struct {
 	keywords []string
 }{
 	{"🇭🇰", []string{"香港", "hk", "hong kong", "hongkong"}},
-	{"🌏", []string{"台湾", "台灣", "tw", "taiwan"}},
+	{"🇨🇳", []string{"台湾", "台灣", "tw", "taiwan"}},
 	{"🇯🇵", []string{"日本", "jp", "japan", "tokyo", "osaka", "东京", "大阪"}},
 	{"🇰🇷", []string{"韩国", "韓國", "kr", "korea", "seoul", "首尔"}},
 	{"🇸🇬", []string{"新加坡", "狮城", "sg", "singapore"}},

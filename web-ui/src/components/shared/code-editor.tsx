@@ -5,12 +5,13 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirro
 import { syntaxHighlighting, defaultHighlightStyle, bracketMatching, foldGutter, indentOnInput } from "@codemirror/language";
 import { json } from "@codemirror/lang-json";
 import { yaml } from "@codemirror/lang-yaml";
+import { json5 } from "codemirror-json5";
 import { oneDark } from "@codemirror/theme-one-dark";
 
 interface CodeEditorProps {
   value: string;
   onChange: (value: string) => void;
-  language?: "yaml" | "json";
+  language?: "yaml" | "json" | "json5";
   placeholder?: string;
   className?: string;
 }
@@ -19,6 +20,8 @@ function getLangExtension(lang?: string) {
   switch (lang) {
     case "json":
       return json();
+    case "json5":
+      return json5();
     case "yaml":
     default:
       return yaml();

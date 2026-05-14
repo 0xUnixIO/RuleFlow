@@ -93,7 +93,7 @@ export default function BackupPage() {
       const data = await post<SqlResult>("/api/admin/exec-sql", { sql: sql.trim() });
       setSqlResult(data);
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "SQL failed");
+      toast.error(e instanceof Error ? e.message : "SQL 执行失败");
     } finally {
       setSqlRunning(false);
     }
@@ -289,12 +289,12 @@ export default function BackupPage() {
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
             <Terminal className="size-4" />
-            SQL Executor
+            SQL 执行器
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="space-y-1.5">
-            <Label>SQL Query</Label>
+            <Label>SQL 语句</Label>
             <Textarea
               value={sql}
               onChange={(e) => setSql(e.target.value)}
@@ -307,10 +307,10 @@ export default function BackupPage() {
           <div className="flex gap-2">
             <Button onClick={handleSql} disabled={sqlRunning || !sql.trim()} size="sm">
               {sqlRunning ? <Loader2 className="size-3.5 mr-1.5 animate-spin" /> : <Play className="size-3.5 mr-1.5" />}
-              Run
+              执行
             </Button>
             <Button variant="outline" size="sm" onClick={() => { setSql(""); setSqlResult(null); }}>
-              <Trash2 className="size-3.5 mr-1.5" /> Clear
+              <Trash2 className="size-3.5 mr-1.5" /> 清空
             </Button>
           </div>
           {sqlResult && (
@@ -335,7 +335,7 @@ export default function BackupPage() {
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">
-                  {sqlResult.type === "select" ? "No rows returned" : `${sqlResult.rows_affected} row(s) affected`}
+                  {sqlResult.type === "select" ? "无返回行" : `影响 ${sqlResult.rows_affected} 行`}
                 </p>
               )}
             </div>

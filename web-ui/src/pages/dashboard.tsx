@@ -32,16 +32,16 @@ import {
 // ---------------------------------------------------------------------------
 
 function relativeTime(iso: string | null): string {
-  if (!iso) return "Never";
+  if (!iso) return "从未";
   const diff = Date.now() - new Date(iso).getTime();
   const seconds = Math.floor(diff / 1000);
-  if (seconds < 60) return "Just now";
+  if (seconds < 60) return "刚刚";
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 60) return `${minutes} 分钟前`;
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
+  if (hours < 24) return `${hours} 小时前`;
   const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+  return `${days} 天前`;
 }
 
 function formatBytes(bytes: number): string {
@@ -55,15 +55,15 @@ function subscriptionHealth(
   sub: Subscription,
 ): { label: string; color: string; dotClass: string } {
   if (sub.last_fetch_error) {
-    return { label: "Error", color: "text-red-400", dotClass: "bg-red-400" };
+    return { label: "异常", color: "text-red-400", dotClass: "bg-red-400" };
   }
   if (sub.last_fetched_at) {
     const age = Date.now() - new Date(sub.last_fetched_at).getTime();
     if (age > 24 * 60 * 60 * 1000) {
-      return { label: "Stale", color: "text-yellow-400", dotClass: "bg-yellow-400" };
+      return { label: "过期", color: "text-yellow-400", dotClass: "bg-yellow-400" };
     }
   }
-  return { label: "Normal", color: "text-emerald-400", dotClass: "bg-emerald-400" };
+  return { label: "正常", color: "text-emerald-400", dotClass: "bg-emerald-400" };
 }
 
 const PROTOCOL_COLORS: Record<string, string> = {
@@ -171,7 +171,7 @@ function ProtocolBar({
   );
 
   if (sorted.length === 0) {
-    return <p className="text-xs text-muted-foreground">No protocol data</p>;
+    return <p className="text-xs text-muted-foreground">暂无协议数据</p>;
   }
 
   return (
@@ -283,7 +283,7 @@ function SubscriptionHealthCard({ sub }: { sub: Subscription }) {
             variant={sub.enabled ? "default" : "secondary"}
             className="shrink-0 text-[0.65rem]"
           >
-            {sub.enabled ? "Enabled" : "Disabled"}
+            {sub.enabled ? "启用" : "禁用"}
           </Badge>
         </div>
 
@@ -295,7 +295,7 @@ function SubscriptionHealthCard({ sub }: { sub: Subscription }) {
           </span>
           <span className="flex items-center gap-1 text-muted-foreground">
             <Server className="size-3" />
-            {sub.node_count} nodes
+            {sub.node_count} 个节点
           </span>
           <span className="flex items-center gap-1 text-muted-foreground">
             <Clock className="size-3" />
@@ -360,10 +360,10 @@ export default function DashboardPage() {
       {/* Page header */}
       <div>
         <h1 className="font-heading text-2xl font-bold tracking-tight text-foreground">
-          Dashboard
+          概览
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Overview of your RuleFlow instance
+          RuleFlow 实例状态总览
         </p>
       </div>
 
@@ -377,28 +377,28 @@ export default function DashboardPage() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatsCard
-            title="Subscriptions"
+            title="订阅源"
             icon={Rss}
             value={`${enabledSubs} / ${subscriptions?.length ?? 0}`}
-            subtitle={`${enabledSubs} enabled`}
+            subtitle={`${enabledSubs} 个已启用`}
           />
           <StatsCard
-            title="Nodes"
+            title="节点"
             icon={Server}
             value={`${nodeStats?.enabled ?? 0} / ${nodeStats?.total ?? 0}`}
-            subtitle={`${nodeStats?.disabled ?? 0} disabled`}
+            subtitle={`${nodeStats?.disabled ?? 0} 个已禁用`}
           />
           <StatsCard
-            title="Config Policies"
+            title="配置策略"
             icon={Shield}
             value={`${enabledPolicies} / ${configPolicies?.length ?? 0}`}
-            subtitle={`${enabledPolicies} enabled`}
+            subtitle={`${enabledPolicies} 个已启用`}
           />
           <StatsCard
-            title="Templates"
+            title="模板"
             icon={FileCode2}
             value={String(templates?.length ?? 0)}
-            subtitle="Total templates"
+            subtitle="模板总数"
           />
         </div>
       )}
@@ -408,7 +408,7 @@ export default function DashboardPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-sm">
             <Activity className="size-4 text-muted-foreground" />
-            Protocol Distribution
+            协议分布
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -434,7 +434,7 @@ export default function DashboardPage() {
       <div>
         <div className="mb-3 flex items-center gap-2">
           <Wifi className="size-4 text-muted-foreground" />
-          <h2 className="font-heading text-sm font-semibold">Subscription Health</h2>
+          <h2 className="font-heading text-sm font-semibold">订阅状态</h2>
         </div>
         {subsLoading ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -451,7 +451,7 @@ export default function DashboardPage() {
         ) : (
           <Card>
             <CardContent className="py-8 text-center text-sm text-muted-foreground">
-              No subscriptions yet. Add one to get started.
+              暂无订阅源，添加一个开始使用。
             </CardContent>
           </Card>
         )}
@@ -460,19 +460,19 @@ export default function DashboardPage() {
       {/* Quick links */}
       <div>
         <h2 className="mb-3 font-heading text-sm font-semibold text-muted-foreground">
-          Quick Links
+          快捷入口
         </h2>
         <div className="flex flex-wrap gap-3">
           <Button variant="outline" size="sm" render={<Link to="/converter" />}>
-            Subscription Converter
+            订阅转换
             <ArrowRight className="size-3.5" />
           </Button>
           <Button variant="outline" size="sm" render={<Link to="/subscriptions" />}>
-            Manage Subscriptions
+            管理订阅
             <ArrowRight className="size-3.5" />
           </Button>
           <Button variant="outline" size="sm" render={<Link to="/nodes" />}>
-            View Nodes
+            查看节点
             <ArrowRight className="size-3.5" />
           </Button>
         </div>

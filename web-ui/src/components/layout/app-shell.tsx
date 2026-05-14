@@ -34,14 +34,14 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { label: "Subscriptions", href: "/subscriptions", icon: Rss },
-  { label: "Nodes", href: "/nodes", icon: Server },
-  { label: "Rule Sources", href: "/rule-sources", icon: BookOpen },
-  { label: "Templates", href: "/templates", icon: FileCode2 },
-  { label: "Config Policies", href: "/configs", icon: ShieldCheck },
-  { label: "Access Logs", href: "/config-access-logs", icon: ScrollText },
-  { label: "DB Backup", href: "/backup", icon: CloudUpload },
+  { label: "概览", href: "/dashboard", icon: LayoutDashboard },
+  { label: "订阅源", href: "/subscriptions", icon: Rss },
+  { label: "节点", href: "/nodes", icon: Server },
+  { label: "规则源", href: "/rule-sources", icon: BookOpen },
+  { label: "配置模板", href: "/templates", icon: FileCode2 },
+  { label: "配置策略", href: "/configs", icon: ShieldCheck },
+  { label: "访问日志", href: "/config-access-logs", icon: ScrollText },
+  { label: "数据备份", href: "/backup", icon: CloudUpload },
 ];
 
 export default function AppShell() {
@@ -53,9 +53,9 @@ export default function AppShell() {
     setRefreshing(true);
     try {
       await post("/api/cache/policies/clear");
-      toast.success("Cache cleared successfully");
+      toast.success("Cache 已成功清除");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to clear cache");
+      toast.error(err instanceof Error ? err.message : "清除 Cache 失败");
     } finally {
       setRefreshing(false);
     }
@@ -112,7 +112,7 @@ export default function AppShell() {
               onClick={() => setSidebarOpen(false)}
             >
               <X className="size-4" />
-              <span className="sr-only">Close sidebar</span>
+              <span className="sr-only">关闭侧边栏</span>
             </Button>
           </div>
 
@@ -121,7 +121,7 @@ export default function AppShell() {
           {/* Navigation */}
           <ScrollArea className="flex-1 px-3 py-3">
             <div className="mb-2 px-2 text-[0.65rem] font-semibold uppercase tracking-widest text-sidebar-foreground/50">
-              Workspace
+              工作区
             </div>
             <nav className="flex flex-col gap-0.5">
               {navItems.map((item) => {
@@ -176,7 +176,7 @@ export default function AppShell() {
               <RefreshCw
                 className={cn("size-3.5", refreshing && "animate-spin")}
               />
-              {refreshing ? "Clearing…" : "Refresh Cache"}
+              {refreshing ? "清理中…" : "刷新缓存"}
             </Button>
           </div>
         </aside>
@@ -191,7 +191,7 @@ export default function AppShell() {
               onClick={() => setSidebarOpen(true)}
             >
               <PanelLeft className="size-4" />
-              <span className="sr-only">Open sidebar</span>
+              <span className="sr-only">打开侧边栏</span>
             </Button>
             <span className="font-heading text-sm font-semibold tracking-tight">
               RuleFlow

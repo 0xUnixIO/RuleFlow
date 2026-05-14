@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,20 @@ export default function LoginPage() {
   const hasError = searchParams.get("error") === "1";
 
   const [showPassword, setShowPassword] = useState(false);
+
+  // 检查是否需要首次初始化，若是则跳转到 setup 页面
+  useEffect(() => {
+    fetch("/api/setup/status", { credentials: "include" })
+      .then((res) => res.json())
+      .then((json) => {
+        if (json?.data?.setup_required === true) {
+          window.location.href = "/setup";
+        }
+      })
+      .catch(() => {
+        // 请求失败时静默忽略，保持在登录页
+      });
+  }, []);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
@@ -34,7 +48,7 @@ export default function LoginPage() {
               RuleFlow
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Proxy subscription management
+              代理订阅管理平台
             </p>
           </div>
         </div>
@@ -42,32 +56,46 @@ export default function LoginPage() {
         {/* Login card */}
         <Card>
           <CardHeader>
-            <CardTitle>Sign In</CardTitle>
+            <CardTitle>登录</CardTitle>
             <CardDescription>
-              Enter your password to access the dashboard.
+              输入凭据以访问管理后台。
             </CardDescription>
           </CardHeader>
           <CardContent>
             {hasError && (
               <div className="mb-4 flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
                 <AlertCircle className="size-4 shrink-0" />
-                <span>Invalid password. Please try again.</span>
+                <span>用户名或密码错误，请重试。</span>
               </div>
             )}
 
             <form method="POST" action="/login" className="flex flex-col gap-4">
               <input type="hidden" name="next" value={nextUrl} />
 
+              {/* Username */}
               <div className="flex flex-col gap-2">
-                <Label htmlFor="password">Password</Label>
+                <Label htmlFor="username">用户名</Label>
+                <Input
+                  id="username"
+                  name="username"
+                  type="text"
+                  placeholder="请输入用户名"
+                  required
+                  autoFocus
+                  autoComplete="username"
+                />
+              </div>
+
+              {/* Password */}
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="password">密码</Label>
                 <div className="relative">
                   <Input
                     id="password"
                     name="password"
                     type={showPassword ? "text" : "password"}
-                    placeholder="Enter your password"
+                    placeholder="请输入密码"
                     required
-                    autoFocus
                     autoComplete="current-password"
                     className="pr-9"
                   />
@@ -76,7 +104,7 @@ export default function LoginPage() {
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute inset-y-0 right-0 flex items-center justify-center w-9 text-muted-foreground hover:text-foreground transition-colors"
                     tabIndex={-1}
-                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    aria-label={showPassword ? "隐藏密码" : "显示密码"}
                   >
                     {showPassword ? (
                       <EyeOff className="size-4" />
@@ -88,14 +116,14 @@ export default function LoginPage() {
               </div>
 
               <Button type="submit" className="w-full">
-                Sign In
+                登录
               </Button>
             </form>
           </CardContent>
         </Card>
 
         <p className="mt-6 text-center text-xs text-muted-foreground/60">
-          Session secured via HTTP-only cookie
+          会话通过 HTTP-only Cookie 安全保持
         </p>
       </div>
     </div>

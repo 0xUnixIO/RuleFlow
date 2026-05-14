@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	iofs "io/fs"
 	"log"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"golang.org/x/crypto/bcrypt"
 
 	"github.com/ablate-ai/RuleFlow/api"
 	"github.com/ablate-ai/RuleFlow/cache"
@@ -42,6 +44,10 @@ func main() {
 	}
 	log.Printf("✅ 数据库连接成功\n")
 	defer db.Close()
+
+	if err := database.RunMigrations(context.Background(), db.Pool, migrationsFS); err != nil {
+		log.Fatalf("❌ 数据库迁移失败: %v\n", err)
+	}
 
 	// 尝试连接 Redis
 	if os.Getenv("REDIS_ADDR") != "" {
@@ -119,6 +125,13 @@ func main() {
 	backupScheduler.Start(schedulerCtx)
 	backupHandlers := api.NewBackupHandlers(backupService)
 
+	adminUserRepo := database.NewAdminUserRepo(db)
+
+	sessionSecret, err := database.LoadOrCreateSessionSecret(context.Background(), db)
+	if err != nil {
+		log.Fatalf("❌ 加载 session secret 失败: %v\n", err)
+	}
+
 	// 创建 API 处理器
 	apiHandlers := api.NewHandlers(subscriptionService, templateService, configPolicyService, ruleSourceService, nodeService, maintenanceService, subscriptionSyncService, ruleSourceSyncService, subscriptionCache, redisClient, db)
 
@@ -132,7 +145,7 @@ func main() {
 	log.Printf("💡 健康检查: http://localhost:%s/health\n", port)
 
 	// 优雅关闭
-	r := setupRoutes(cfg, apiHandlers, backupHandlers)
+	r := setupRoutes(cfg, sessionSecret, apiHandlers, backupHandlers, adminUserRepo)
 	server := &http.Server{
 		Addr:    ":" + port,
 		Handler: api.LoggingMiddleware(api.CORSMiddleware(cfg.CORSAllowedOrigins)(api.RecoveryMiddleware(r))),
@@ -165,15 +178,11 @@ func main() {
 	os.Exit(0)
 }
 
-func setupRoutes(cfg *config.Config, apiHandlers *api.Handlers, backupHandlers *api.BackupHandlers) chi.Router {
-	if cfg.AdminPassword != "" {
-		log.Printf("🔒 Web 控制台鉴权已启用\n")
-	} else {
-		log.Printf("⚠️ ADMIN_PASSWORD 未设置，Web 控制台无需鉴权\n")
-	}
+func setupRoutes(cfg *config.Config, sessionSecret string, apiHandlers *api.Handlers, backupHandlers *api.BackupHandlers, adminUserRepo *database.AdminUserRepo) chi.Router {
+	log.Printf("🔒 Web 控制台鉴权已启用\n")
 
 	r := chi.NewRouter()
-	webAuth := api.WebAuthMiddleware(cfg.AdminPassword)
+	webAuth := api.WebAuthMiddleware(sessionSecret)
 
 	// ── SPA 静态资源 ──────────────────────────────────────
 	distFS, _ := iofs.Sub(webFS, "web-ui/dist")
@@ -184,26 +193,71 @@ func setupRoutes(cfg *config.Config, apiHandlers *api.Handlers, backupHandlers *
 		w.Write(indexHTML)
 	})
 
-	// 静态资源（JS/CSS/SVG）必须公开，否则登录页无法加载
 	fileServer := http.FileServer(http.FS(distFS))
 	r.Handle("/assets/*", fileServer)
 	r.Handle("/favicon.svg", fileServer)
 	r.Handle("/icons.svg", fileServer)
 
+	// ── 初始化设置（首次使用创建管理员）─────────────────
+	r.Get("/setup", serveSPA)
+	r.Get("/api/setup/status", func(w http.ResponseWriter, r *http.Request) {
+		count, err := adminUserRepo.Count(r.Context())
+		if err != nil {
+			api.SendError(w, http.StatusInternalServerError, "查询失败")
+			return
+		}
+		api.SendSuccess(w, map[string]bool{"setup_required": count == 0})
+	})
+	r.Post("/api/setup", func(w http.ResponseWriter, req *http.Request) {
+		count, err := adminUserRepo.Count(req.Context())
+		if err != nil {
+			api.SendError(w, http.StatusInternalServerError, "查询失败")
+			return
+		}
+		if count > 0 {
+			api.SendError(w, http.StatusConflict, "管理员已存在")
+			return
+		}
+		var body struct {
+			Username string `json:"username"`
+			Password string `json:"password"`
+		}
+		if err := json.NewDecoder(req.Body).Decode(&body); err != nil || body.Username == "" || body.Password == "" {
+			api.SendError(w, http.StatusBadRequest, "用户名和密码不能为空")
+			return
+		}
+		hash, err := bcrypt.GenerateFromPassword([]byte(body.Password), bcrypt.DefaultCost)
+		if err != nil {
+			api.SendError(w, http.StatusInternalServerError, "密码加密失败")
+			return
+		}
+		if err := adminUserRepo.Create(req.Context(), body.Username, string(hash)); err != nil {
+			api.SendError(w, http.StatusInternalServerError, "创建用户失败")
+			return
+		}
+		api.SendSuccess(w, nil)
+	})
+
 	// ── 登录 / 退出 ──────────────────────────────────────
 	r.Get("/login", serveSPA)
 	r.Post("/login", func(w http.ResponseWriter, req *http.Request) {
-		pass := req.FormValue("password")
-		if cfg.AdminPassword == "" || pass == cfg.AdminPassword {
-			api.SetSessionCookie(w, cfg.AdminPassword)
-			next := req.FormValue("next")
-			if next == "" {
-				next = "/dashboard"
-			}
-			http.Redirect(w, req, next, http.StatusFound)
-		} else {
-			http.Redirect(w, req, "/login?error=1&next="+req.FormValue("next"), http.StatusFound)
+		username := req.FormValue("username")
+		password := req.FormValue("password")
+		next := req.FormValue("next")
+		if next == "" {
+			next = "/dashboard"
 		}
+		user, err := adminUserRepo.GetByUsername(req.Context(), username)
+		if err != nil || user == nil {
+			http.Redirect(w, req, "/login?error=1&next="+next, http.StatusFound)
+			return
+		}
+		if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
+			http.Redirect(w, req, "/login?error=1&next="+next, http.StatusFound)
+			return
+		}
+		api.SetSessionCookie(w, sessionSecret)
+		http.Redirect(w, req, next, http.StatusFound)
 	})
 	r.Get("/logout", func(w http.ResponseWriter, r *http.Request) {
 		api.ClearSessionCookie(w)
@@ -213,7 +267,7 @@ func setupRoutes(cfg *config.Config, apiHandlers *api.Handlers, backupHandlers *
 	// ── 公开 SPA 路由 ────────────────────────────────────
 	r.Get("/converter", serveSPA)
 
-	// ── 受保护 SPA 路由（需鉴权，未登录重定向到 /login）───
+	// ── 受保护 SPA 路由 ──────────────────────────────────
 	r.With(webAuth).Get("/", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/dashboard", http.StatusFound)
 	})
@@ -239,14 +293,14 @@ func setupRoutes(cfg *config.Config, apiHandlers *api.Handlers, backupHandlers *
 	})
 	r.Get("/rulesets/{name}", apiHandlers.ExportRuleSource)
 
-	// ── 鉴权检查接口（供 SPA 验证会话状态）───────────────
+	// ── 鉴权检查接口 ──────────────────────────────────────
 	r.Get("/api/auth/check", func(w http.ResponseWriter, r *http.Request) {
-		valid := api.ValidateSession(r, cfg.AdminPassword)
+		valid := api.ValidateSession(r, sessionSecret)
 		api.SendSuccess(w, map[string]bool{"authenticated": valid})
 	})
 
 	// ── API 路由（整体加鉴权）────────────────────────────
-	r.With(api.APIAuthMiddleware(cfg.AdminPassword)).Route("/api", func(r chi.Router) {
+	r.With(api.APIAuthMiddleware(sessionSecret)).Route("/api", func(r chi.Router) {
 		r.Post("/cache/policies/clear", apiHandlers.ClearAllPolicyCache)
 		r.Post("/admin/migrate-snowflake-ids", apiHandlers.MigrateSnowflakeIDs)
 		r.Post("/admin/exec-sql", apiHandlers.ExecSQL)

@@ -28,9 +28,9 @@ export default function DataMigrationPage() {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      toast.success("Export downloaded");
+      toast.success("导出文件已下载");
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Export failed");
+      toast.error(e instanceof Error ? e.message : "导出失败");
     }
   }
 
@@ -42,7 +42,7 @@ export default function DataMigrationPage() {
       const data = await post<SqlResult>("/api/admin/exec-sql", { sql: sql.trim() });
       setSqlResult(data);
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "SQL failed");
+      toast.error(e instanceof Error ? e.message : "SQL 执行失败");
     } finally {
       setSqlRunning(false);
     }
@@ -51,25 +51,25 @@ export default function DataMigrationPage() {
   return (
     <div className="space-y-6 p-6">
       <div>
-        <h1 className="font-heading text-2xl font-bold tracking-tight">Data Migration</h1>
-        <p className="text-sm text-muted-foreground">Export configuration data and run raw SQL</p>
+        <h1 className="font-heading text-2xl font-bold tracking-tight">数据迁移</h1>
+        <p className="text-sm text-muted-foreground">导出配置数据并执行原始 SQL</p>
       </div>
 
-      {/* Export */}
+      {/* 导出 */}
       <Card>
-        <CardHeader><CardTitle className="text-base">Export Data</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-base">导出数据</CardTitle></CardHeader>
         <CardContent className="space-y-3">
-          <p className="text-sm text-muted-foreground">Download all data as a JSON file.</p>
-          <Button onClick={handleExport}><Download className="size-4 mr-1.5" /> Export</Button>
+          <p className="text-sm text-muted-foreground">将所有数据下载为 JSON 文件。</p>
+          <Button onClick={handleExport}><Download className="size-4 mr-1.5" /> 导出</Button>
         </CardContent>
       </Card>
 
-      {/* SQL Executor */}
+      {/* SQL 执行器 */}
       <Card>
-        <CardHeader><CardTitle className="text-base">SQL Executor</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-base">SQL 执行器</CardTitle></CardHeader>
         <CardContent className="space-y-3">
           <div className="space-y-2">
-            <Label>SQL Query</Label>
+            <Label>SQL 语句</Label>
             <Textarea
               value={sql}
               onChange={(e) => setSql(e.target.value)}
@@ -81,9 +81,9 @@ export default function DataMigrationPage() {
           </div>
           <div className="flex gap-2">
             <Button onClick={handleSql} disabled={sqlRunning || !sql.trim()}>
-              {sqlRunning ? <Loader2 className="size-4 mr-1.5 animate-spin" /> : <Play className="size-4 mr-1.5" />} Run
+              {sqlRunning ? <Loader2 className="size-4 mr-1.5 animate-spin" /> : <Play className="size-4 mr-1.5" />} 执行
             </Button>
-            <Button variant="outline" onClick={() => { setSql(""); setSqlResult(null); }}><Trash2 className="size-4 mr-1.5" /> Clear</Button>
+            <Button variant="outline" onClick={() => { setSql(""); setSqlResult(null); }}><Trash2 className="size-4 mr-1.5" /> 清空</Button>
           </div>
           {sqlResult && (
             <div className="space-y-2">
@@ -107,7 +107,7 @@ export default function DataMigrationPage() {
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">
-                  {sqlResult.type === "select" ? "No rows returned" : `${sqlResult.rows_affected} row(s) affected`}
+                  {sqlResult.type === "select" ? "无返回行" : `影响 ${sqlResult.rows_affected} 行`}
                 </p>
               )}
             </div>

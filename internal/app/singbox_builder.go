@@ -14,13 +14,6 @@ func BuildSingBoxFromDefaultTemplate(nodes []*ProxyNode) (string, error) {
 func BuildSingBoxFromTemplateContent(nodes []*ProxyNode, templateContent string) (string, error) {
 	nodeOutbounds, nodeEndpoints, nodeNames := buildSingBoxOutbounds(nodes)
 	allNodes := fallbackSingBoxOutboundList(nodeNames, []string{"DIRECT"})
-	autoNodes := fallbackSingBoxOutboundList(filterNodeNames(nodeNames, func(name string) bool {
-		return !strings.Contains(strings.ToLower(name), "v2")
-	}), allNodes)
-	sgNodes := fallbackSingBoxOutboundList(filterNodeNames(nodeNames, regionMatcher("新加坡", "SG", "Singapore", "狮城", "🇸🇬")), allNodes)
-	hkNodes := fallbackSingBoxOutboundList(filterNodeNames(nodeNames, regionMatcher("香港", "HK", "Hong Kong", "🇭🇰")), allNodes)
-	usNodes := fallbackSingBoxOutboundList(filterNodeNames(nodeNames, regionMatcher("美国", "US", "USA", "United States", "🇺🇸")), allNodes)
-	jpNodes := fallbackSingBoxOutboundList(filterNodeNames(nodeNames, regionMatcher("日本", "JP", "Japan", "🇯🇵")), allNodes)
 
 	extraOutbounds := make([]map[string]interface{}, 0, len(nodeOutbounds))
 	extraOutbounds = append(extraOutbounds, nodeOutbounds...)
@@ -29,12 +22,6 @@ func BuildSingBoxFromTemplateContent(nodes []*ProxyNode, templateContent string)
 	replacer := strings.NewReplacer(
 		"\"__ENDPOINTS__\"", marshalSingBoxRawObjectArray(nodeEndpoints),
 		"__ENDPOINTS__", marshalSingBoxRawObjectArray(nodeEndpoints),
-		"\"__PROXY_NODES__\"", joinSingBoxStringLiterals(allNodes),
-		"\"__AUTO_NODES__\"", joinSingBoxStringLiterals(autoNodes),
-		"\"__SG_NODES__\"", joinSingBoxStringLiterals(sgNodes),
-		"\"__HK_NODES__\"", joinSingBoxStringLiterals(hkNodes),
-		"\"__US_NODES__\"", joinSingBoxStringLiterals(usNodes),
-		"\"__JP_NODES__\"", joinSingBoxStringLiterals(jpNodes),
 		"\"__OUTBOUNDS__\"", outboundsReplacement,
 	)
 
@@ -45,17 +32,11 @@ func BuildSingBoxFromTemplateContent(nodes []*ProxyNode, templateContent string)
 	}
 
 	var parsed map[string]interface{}
-	if err := json.Unmarshal([]byte(content), &parsed); err != nil {
+	if err := json.Unmarshal([]byte(stripJSON5(content)), &parsed); err != nil {
 		return "", fmt.Errorf("生成 sing-box 配置失败: %w", err)
 	}
 	if err := expandSingBoxOutboundGroups(parsed, nodeNames, map[string][]string{
-		"__NODES__":       allNodes,
-		"__PROXY_NODES__": allNodes,
-		"__AUTO_NODES__":  autoNodes,
-		"__SG_NODES__":    sgNodes,
-		"__HK_NODES__":    hkNodes,
-		"__US_NODES__":    usNodes,
-		"__JP_NODES__":    jpNodes,
+		"__NODES__": allNodes,
 	}); err != nil {
 		return "", err
 	}
@@ -665,27 +646,54 @@ func isSingBoxGroupType(outboundType string) bool {
 	}
 }
 
-func filterNodeNames(values []string, match func(string) bool) []string {
-	out := make([]string, 0, len(values))
-	for _, value := range values {
-		if match(value) {
-			out = append(out, value)
-		}
-	}
-	return out
-}
 
-func regionMatcher(keywords ...string) func(string) bool {
-	patterns := make([]*regexp.Regexp, 0, len(keywords))
-	for _, keyword := range keywords {
-		patterns = append(patterns, regexp.MustCompile("(?i)"+regexp.QuoteMeta(keyword)))
-	}
-	return func(name string) bool {
-		for _, pattern := range patterns {
-			if pattern.MatchString(name) {
-				return true
+var trailingCommaRe = regexp.MustCompile(`,(\s*[}\]])`)
+
+// stripJSON5 将 JSON5/JSONC 内容转换为标准 JSON，去除 // 和 /* */ 注释及尾随逗号。
+func stripJSON5(src string) string {
+	var buf strings.Builder
+	buf.Grow(len(src))
+
+	i := 0
+	for i < len(src) {
+		c := src[i]
+		switch {
+		case c == '"':
+			// 字符串字面量：原样复制，正确处理转义
+			buf.WriteByte(c)
+			i++
+			for i < len(src) {
+				ch := src[i]
+				buf.WriteByte(ch)
+				i++
+				if ch == '\\' && i < len(src) {
+					buf.WriteByte(src[i])
+					i++
+				} else if ch == '"' {
+					break
+				}
 			}
+		case i+1 < len(src) && c == '/' && src[i+1] == '/':
+			// 单行注释：跳过到行尾（保留换行符以维持行号）
+			i += 2
+			for i < len(src) && src[i] != '\n' {
+				i++
+			}
+		case i+1 < len(src) && c == '/' && src[i+1] == '*':
+			// 块注释：跳过到 */
+			i += 2
+			for i+1 < len(src) {
+				if src[i] == '*' && src[i+1] == '/' {
+					i += 2
+					break
+				}
+				i++
+			}
+		default:
+			buf.WriteByte(c)
+			i++
 		}
-		return false
 	}
+
+	return trailingCommaRe.ReplaceAllString(buf.String(), "$1")
 }

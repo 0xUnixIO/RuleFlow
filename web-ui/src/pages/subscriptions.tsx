@@ -49,14 +49,14 @@ import {
 // ---------------------------------------------------------------------------
 
 const INTERVALS = [
-  { label: "5 min", value: "300" },
-  { label: "10 min", value: "600" },
-  { label: "30 min", value: "1800" },
-  { label: "1 hour", value: "3600" },
-  { label: "2 hours", value: "7200" },
-  { label: "6 hours", value: "21600" },
-  { label: "12 hours", value: "43200" },
-  { label: "24 hours", value: "86400" },
+  { label: "5 分钟", value: "300" },
+  { label: "10 分钟", value: "600" },
+  { label: "30 分钟", value: "1800" },
+  { label: "1 小时", value: "3600" },
+  { label: "2 小时", value: "7200" },
+  { label: "6 小时", value: "21600" },
+  { label: "12 小时", value: "43200" },
+  { label: "24 小时", value: "86400" },
 ];
 
 const PROTOCOLS = [
@@ -90,6 +90,7 @@ const PROTOCOL_COLORS: Record<string, string> = {
 interface SubscriptionForm {
   name: string;
   url: string;
+  enabled: boolean;
   auto_refresh: boolean;
   refresh_interval: number;
   description: string;
@@ -104,7 +105,8 @@ interface SubscriptionForm {
 const EMPTY_FORM: SubscriptionForm = {
   name: "",
   url: "",
-  auto_refresh: false,
+  enabled: true,
+  auto_refresh: true,
   refresh_interval: 3600,
   description: "",
   disable_name_prefix: false,
@@ -120,16 +122,16 @@ const EMPTY_FORM: SubscriptionForm = {
 // ---------------------------------------------------------------------------
 
 function relativeTime(iso: string | null): string {
-  if (!iso) return "Never";
+  if (!iso) return "从未";
   const diff = Date.now() - new Date(iso).getTime();
   const seconds = Math.floor(diff / 1000);
-  if (seconds < 60) return "Just now";
+  if (seconds < 60) return "刚刚";
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 60) return `${minutes} 分钟前`;
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
+  if (hours < 24) return `${hours} 小时前`;
   const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+  return `${days} 天前`;
 }
 
 function formatBytes(bytes: number): string {
@@ -296,7 +298,7 @@ function SubscriptionCard({
             variant={sub.enabled ? "default" : "secondary"}
             className="shrink-0 text-[0.65rem]"
           >
-            {sub.enabled ? "Enabled" : "Disabled"}
+            {sub.enabled ? "启用" : "禁用"}
           </Badge>
         </div>
 
@@ -312,7 +314,7 @@ function SubscriptionCard({
         <div className="flex items-center gap-4 text-xs text-muted-foreground">
           <span className="flex items-center gap-1">
             <Server className="size-3" />
-            {sub.node_count} nodes
+            {sub.node_count} 个节点
           </span>
           <span className="flex items-center gap-1">
             <Clock className="size-3" />
@@ -338,7 +340,7 @@ function SubscriptionCard({
             onClick={onEdit}
           >
             <Pencil className="size-3" />
-            Edit
+            编辑
           </Button>
           <Button
             variant="ghost"
@@ -351,7 +353,7 @@ function SubscriptionCard({
             ) : (
               <RefreshCw className="size-3" />
             )}
-            Sync
+            同步
           </Button>
           <Button
             variant="destructive"
@@ -359,7 +361,7 @@ function SubscriptionCard({
             onClick={onDelete}
           >
             <Trash2 className="size-3" />
-            Delete
+            删除
           </Button>
         </div>
       </CardContent>
@@ -411,7 +413,7 @@ export default function SubscriptionsPage() {
         ? put(`/api/subscriptions/${editId}`, data)
         : post("/api/subscriptions", data),
     onSuccess: () => {
-      toast.success(editId ? "Subscription updated" : "Subscription created");
+      toast.success(editId ? "订阅已更新" : "订阅已创建");
       queryClient.invalidateQueries({ queryKey: ["subscriptions"] });
       setDialogOpen(false);
     },
@@ -421,7 +423,7 @@ export default function SubscriptionsPage() {
   const deleteMutation = useMutation({
     mutationFn: (id: number) => del(`/api/subscriptions/${id}`),
     onSuccess: () => {
-      toast.success("Subscription deleted");
+      toast.success("订阅已删除");
       queryClient.invalidateQueries({ queryKey: ["subscriptions"] });
       setDeleteTarget(null);
     },
@@ -431,7 +433,7 @@ export default function SubscriptionsPage() {
   const syncAllMutation = useMutation({
     mutationFn: () => post("/api/subscriptions/sync"),
     onSuccess: () => {
-      toast.success("Sync all triggered");
+      toast.success("全量同步已触发");
       queryClient.invalidateQueries({ queryKey: ["subscriptions"] });
     },
     onError: (err: Error) => toast.error(err.message),
@@ -452,6 +454,7 @@ export default function SubscriptionsPage() {
     setForm({
       name: sub.name,
       url: sub.url,
+      enabled: sub.enabled,
       auto_refresh: sub.auto_refresh,
       refresh_interval: sub.refresh_interval,
       description: sub.description,
@@ -472,10 +475,10 @@ export default function SubscriptionsPage() {
       setSyncingId(id);
       try {
         await post(`/api/subscriptions/${id}/sync`);
-        toast.success("Sync triggered");
+        toast.success("同步已触发");
         queryClient.invalidateQueries({ queryKey: ["subscriptions"] });
       } catch (err: unknown) {
-        toast.error(err instanceof Error ? err.message : "Sync failed");
+        toast.error(err instanceof Error ? err.message : "同步失败");
       } finally {
         setSyncingId(null);
       }
@@ -524,10 +527,10 @@ export default function SubscriptionsPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="font-heading text-2xl font-bold tracking-tight text-foreground">
-            Subscriptions
+            订阅源
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Manage your proxy subscription sources
+            管理代理订阅源
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -540,11 +543,11 @@ export default function SubscriptionsPage() {
             <RefreshCw
               className={cn("size-3.5", syncAllMutation.isPending && "animate-spin")}
             />
-            Sync All
+            全量同步
           </Button>
           <Button size="sm" onClick={openCreate}>
             <Plus className="size-3.5" />
-            New Subscription
+            新建订阅
           </Button>
         </div>
       </div>
@@ -564,15 +567,15 @@ export default function SubscriptionsPage() {
             </div>
             <div className="text-center">
               <p className="text-sm font-medium text-foreground">
-                No subscriptions
+                暂无订阅
               </p>
               <p className="mt-0.5 text-xs text-muted-foreground">
-                Add your first subscription to get started.
+                添加第一个订阅源开始使用。
               </p>
             </div>
             <Button size="sm" onClick={openCreate} className="mt-1">
               <Plus className="size-3.5" />
-              New Subscription
+              新建订阅
             </Button>
           </CardContent>
         </Card>
@@ -599,12 +602,12 @@ export default function SubscriptionsPage() {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>
-              {editId ? "Edit Subscription" : "New Subscription"}
+              {editId ? "编辑订阅" : "新建订阅"}
             </DialogTitle>
             <DialogDescription>
               {editId
-                ? "Update the subscription settings below."
-                : "Add a new proxy subscription source."}
+                ? "修改订阅配置。"
+                : "添加新的代理订阅源。"}
             </DialogDescription>
           </DialogHeader>
 
@@ -612,11 +615,11 @@ export default function SubscriptionsPage() {
             {/* Name */}
             <div className="space-y-1.5">
               <Label htmlFor="sub-name">
-                Name <span className="text-destructive">*</span>
+                名称 <span className="text-destructive">*</span>
               </Label>
               <Input
                 id="sub-name"
-                placeholder="My Subscription"
+                placeholder="我的订阅"
                 value={form.name}
                 onChange={(e) => updateField("name", e.target.value)}
               />
@@ -638,7 +641,7 @@ export default function SubscriptionsPage() {
             {/* Auto Refresh + Interval */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <Label htmlFor="sub-auto-refresh">Auto Refresh</Label>
+                <Label htmlFor="sub-auto-refresh">自动刷新</Label>
                 <Switch
                   id="sub-auto-refresh"
                   checked={form.auto_refresh}
@@ -647,7 +650,7 @@ export default function SubscriptionsPage() {
               </div>
               {form.auto_refresh && (
                 <div className="space-y-1.5">
-                  <Label>Refresh Interval</Label>
+                  <Label>刷新间隔</Label>
                   <Select
                     value={String(form.refresh_interval)}
                     onValueChange={(v) =>
@@ -679,7 +682,7 @@ export default function SubscriptionsPage() {
                 onClick={() => setFiltersOpen((v) => !v)}
               >
                 <Filter className="size-3.5 text-muted-foreground" />
-                Filter Rules
+                过滤规则
                 <ChevronDown
                   className={cn(
                     "ml-auto size-4 text-muted-foreground transition-transform",
@@ -693,27 +696,26 @@ export default function SubscriptionsPage() {
                   {/* Exclude Keywords */}
                   <div className="space-y-1.5">
                     <Label htmlFor="sub-excl-kw">
-                      Exclude Keywords
+                      排除关键词
                     </Label>
                     <Textarea
                       id="sub-excl-kw"
-                      placeholder="keyword1, keyword2, ..."
+                      placeholder="关键词1, 关键词2, ..."
                       value={excludeKeywordsText}
                       onChange={(e) => setExcludeKeywordsText(e.target.value)}
                       rows={2}
                     />
                     <p className="text-[0.65rem] text-muted-foreground">
-                      Comma-separated. Nodes matching these keywords will be
-                      excluded.
+                      逗号分隔。名称包含这些关键词的节点将被排除。
                     </p>
                   </div>
 
                   {/* Exclude Regex */}
                   <div className="space-y-1.5">
-                    <Label htmlFor="sub-excl-regex">Exclude Regex</Label>
+                    <Label htmlFor="sub-excl-regex">排除正则</Label>
                     <Input
                       id="sub-excl-regex"
-                      placeholder="e.g. .*expired.*"
+                      placeholder="例如：.*expired.*"
                       value={form.filter_rules.exclude_regex}
                       onChange={(e) =>
                         setForm((prev) => ({
@@ -729,7 +731,7 @@ export default function SubscriptionsPage() {
 
                   {/* Include Protocols */}
                   <div className="space-y-2">
-                    <Label>Include Protocols</Label>
+                    <Label>包含协议</Label>
                     <div className="grid grid-cols-3 gap-2">
                       {PROTOCOLS.map((proto) => {
                         const checked =
@@ -749,7 +751,7 @@ export default function SubscriptionsPage() {
                       })}
                     </div>
                     <p className="text-[0.65rem] text-muted-foreground">
-                      Leave all unchecked to include every protocol.
+                      全不选则包含所有协议。
                     </p>
                   </div>
                 </div>
@@ -760,10 +762,10 @@ export default function SubscriptionsPage() {
 
             {/* Description */}
             <div className="space-y-1.5">
-              <Label htmlFor="sub-desc">Description</Label>
+              <Label htmlFor="sub-desc">描述</Label>
               <Textarea
                 id="sub-desc"
-                placeholder="Optional notes..."
+                placeholder="可选备注…"
                 value={form.description}
                 onChange={(e) => updateField("description", e.target.value)}
                 rows={2}
@@ -773,9 +775,9 @@ export default function SubscriptionsPage() {
             {/* Disable Name Prefix */}
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
-                <Label htmlFor="sub-prefix">Disable Name Prefix</Label>
+                <Label htmlFor="sub-prefix">禁用名称前缀</Label>
                 <p className="text-[0.65rem] text-muted-foreground">
-                  Don't prepend subscription name to node names
+                  不在节点名称前添加订阅名称
                 </p>
               </div>
               <Switch
@@ -788,7 +790,7 @@ export default function SubscriptionsPage() {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>
-              Cancel
+              取消
             </Button>
             <Button
               onClick={handleSave}
@@ -797,7 +799,7 @@ export default function SubscriptionsPage() {
               {saveMutation.isPending && (
                 <Loader2 className="size-3.5 animate-spin" />
               )}
-              {editId ? "Save Changes" : "Create"}
+              {editId ? "保存修改" : "创建"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -814,19 +816,18 @@ export default function SubscriptionsPage() {
       >
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>Delete Subscription</DialogTitle>
+            <DialogTitle>删除订阅</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete{" "}
+              确定要删除{" "}
               <span className="font-semibold text-foreground">
                 {deleteTarget?.name}
-              </span>
-              ? This action cannot be undone. All associated nodes will also be
-              removed.
+              </span>{" "}
+              吗？此操作不可撤销，所有关联节点也将被移除。
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteTarget(null)}>
-              Cancel
+              取消
             </Button>
             <Button
               variant="destructive"
@@ -838,7 +839,7 @@ export default function SubscriptionsPage() {
               {deleteMutation.isPending && (
                 <Loader2 className="size-3.5 animate-spin" />
               )}
-              Delete
+              删除
             </Button>
           </DialogFooter>
         </DialogContent>

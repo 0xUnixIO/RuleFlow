@@ -766,8 +766,7 @@ func inferRuleSetFormat(source, kind string) string {
 		switch target {
 		case "surge":
 			return "surge"
-		case "clash-classical":
-			return "clash-classical"
+
 		case "clash-domain":
 			return "clash-domain"
 		case "clash-ipcidr":
@@ -792,7 +791,7 @@ func providerBehaviorToFormat(behavior string) string {
 	case "ipcidr":
 		return "clash-ipcidr"
 	case "classical":
-		return "clash-classical"
+		return "surge"
 	default:
 		return ""
 	}

@@ -71,7 +71,7 @@ func (s *RuleSourceService) Validate(source *database.RuleSource) error {
 		return fmt.Errorf("规则源名称不能为空")
 	}
 	switch source.SourceFormat {
-	case "surge", "clash-classical", "clash-domain", "clash-ipcidr", "domain-list", "ip-list":
+	case "surge", "domain-list", "ip-list":
 	default:
 		return fmt.Errorf("不支持的规则源格式: %s", source.SourceFormat)
 	}

@@ -36,37 +36,37 @@ export default function AccessLogsPage() {
     <div className="space-y-6 p-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-heading text-2xl font-bold tracking-tight">Access Logs</h1>
-          <p className="text-sm text-muted-foreground">Configuration access history</p>
+          <h1 className="font-heading text-2xl font-bold tracking-tight">访问日志</h1>
+          <p className="text-sm text-muted-foreground">配置访问历史记录</p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => refetch()}><RefreshCw className="size-4 mr-1.5" /> Refresh</Button>
+        <Button variant="outline" size="sm" onClick={() => refetch()}><RefreshCw className="size-4 mr-1.5" /> 刷新</Button>
       </div>
 
       <div className="flex flex-wrap gap-3">
         <Select value={filters.policy_id || "all"} onValueChange={(v) => setFilters((f) => ({ ...f, policy_id: v === "all" ? "" : v }))}>
-          <SelectTrigger className="w-44"><SelectValue placeholder="Policy" /></SelectTrigger>
+          <SelectTrigger className="w-44"><SelectValue placeholder="策略" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All policies</SelectItem>
+            <SelectItem value="all">全部策略</SelectItem>
             {policies?.map((p) => <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={filters.success || "all"} onValueChange={(v) => setFilters((f) => ({ ...f, success: v === "all" ? "" : v }))}>
-          <SelectTrigger className="w-32"><SelectValue placeholder="Status" /></SelectTrigger>
+          <SelectTrigger className="w-32"><SelectValue placeholder="状态" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All</SelectItem>
-            <SelectItem value="true">Success</SelectItem>
-            <SelectItem value="false">Failed</SelectItem>
+            <SelectItem value="all">全部</SelectItem>
+            <SelectItem value="true">成功</SelectItem>
+            <SelectItem value="false">失败</SelectItem>
           </SelectContent>
         </Select>
         <Select value={filters.cache_hit || "all"} onValueChange={(v) => setFilters((f) => ({ ...f, cache_hit: v === "all" ? "" : v }))}>
           <SelectTrigger className="w-32"><SelectValue placeholder="Cache" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All</SelectItem>
-            <SelectItem value="true">Cache Hit</SelectItem>
-            <SelectItem value="false">Cache Miss</SelectItem>
+            <SelectItem value="all">全部</SelectItem>
+            <SelectItem value="true">Cache 命中</SelectItem>
+            <SelectItem value="false">Cache 未命中</SelectItem>
           </SelectContent>
         </Select>
-        <Input placeholder="Search..." className="w-48" value={filters.keyword} onChange={(e) => setFilters((f) => ({ ...f, keyword: e.target.value }))} />
+        <Input placeholder="搜索…" className="w-48" value={filters.keyword} onChange={(e) => setFilters((f) => ({ ...f, keyword: e.target.value }))} />
       </div>
 
       {isLoading ? (
@@ -76,12 +76,12 @@ export default function AccessLogsPage() {
             <Table containerClassName="max-h-[calc(100vh-300px)] overflow-y-auto">
               <TableHeader className="sticky top-0 z-10 bg-card">
                 <TableRow>
-                  <TableHead>Time</TableHead>
+                  <TableHead>时间</TableHead>
                   <TableHead>Token</TableHead>
                   <TableHead>IP</TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead>状态</TableHead>
                   <TableHead>Cache</TableHead>
-                  <TableHead>Nodes</TableHead>
+                  <TableHead>节点数</TableHead>
                   <TableHead>User Agent</TableHead>
                 </TableRow>
               </TableHeader>
@@ -108,7 +108,7 @@ export default function AccessLogsPage() {
                   </TableRow>
                 ))}
                 {!logs?.length && (
-                  <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">No logs found</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">暂无日志</TableCell></TableRow>
                 )}
               </TableBody>
             </Table>

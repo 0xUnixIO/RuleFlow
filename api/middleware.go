@@ -15,34 +15,31 @@ import (
 const sessionCookie = "rf_session"
 
 // sessionToken 用 HMAC-SHA256 生成无状态 session token
-func sessionToken(password string) string {
-	mac := hmac.New(sha256.New, []byte(password))
+func sessionToken(secret string) string {
+	mac := hmac.New(sha256.New, []byte(secret))
 	mac.Write([]byte("ruleflow:authenticated"))
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
 // ValidateSession 校验请求是否携带有效 session
-func ValidateSession(r *http.Request, password string) bool {
-	if password == "" {
-		return true
-	}
+func ValidateSession(r *http.Request, secret string) bool {
 	c, err := r.Cookie(sessionCookie)
 	if err != nil {
 		return false
 	}
-	expected := sessionToken(password)
+	expected := sessionToken(secret)
 	return subtle.ConstantTimeCompare([]byte(c.Value), []byte(expected)) == 1
 }
 
 // SetSessionCookie 在响应中写入 session cookie
-func SetSessionCookie(w http.ResponseWriter, password string) {
+func SetSessionCookie(w http.ResponseWriter, secret string) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookie,
-		Value:    sessionToken(password),
+		Value:    sessionToken(secret),
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
-		MaxAge:   86400 * 30, // 30 天
+		MaxAge:   86400 * 30,
 	})
 }
 
@@ -58,10 +55,10 @@ func ClearSessionCookie(w http.ResponseWriter) {
 }
 
 // WebAuthMiddleware Web 页面鉴权：未登录时重定向到登录页
-func WebAuthMiddleware(password string) func(http.Handler) http.Handler {
+func WebAuthMiddleware(secret string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if !ValidateSession(r, password) {
+			if !ValidateSession(r, secret) {
 				http.Redirect(w, r, "/login?next="+url.QueryEscape(r.URL.RequestURI()), http.StatusFound)
 				return
 			}
@@ -71,10 +68,10 @@ func WebAuthMiddleware(password string) func(http.Handler) http.Handler {
 }
 
 // APIAuthMiddleware API 鉴权：未登录时返回 401 JSON
-func APIAuthMiddleware(password string) func(http.Handler) http.Handler {
+func APIAuthMiddleware(secret string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if !ValidateSession(r, password) {
+			if !ValidateSession(r, secret) {
 				SendError(w, http.StatusUnauthorized, "未登录，请先访问 /login")
 				return
 			}
@@ -87,21 +84,9 @@ func APIAuthMiddleware(password string) func(http.Handler) http.Handler {
 func LoggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-
-		// 创建响应写入器包装器以捕获状态码
 		wrapped := &responseWriter{ResponseWriter: w, status: http.StatusOK}
-
-		// 调用下一个处理器
 		next.ServeHTTP(wrapped, r)
-
-		// 记录日志
-		duration := time.Since(start)
-		log.Printf("%s %s %d %v",
-			r.Method,
-			r.URL.Path,
-			wrapped.status,
-			duration,
-		)
+		log.Printf("%s %s %d %v", r.Method, r.URL.Path, wrapped.status, time.Since(start))
 	})
 }
 
@@ -112,13 +97,11 @@ func CORSMiddleware(allowedOrigins string) func(http.Handler) http.Handler {
 			origin := r.Header.Get("Origin")
 			if origin != "" {
 				w.Header().Add("Vary", "Origin")
-
 				allowedOrigin, allowCredentials := resolveAllowedOrigin(origin, allowedOrigins)
 				if allowedOrigin == "" {
 					next.ServeHTTP(w, r)
 					return
 				}
-
 				w.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
 				if allowCredentials {
 					w.Header().Set("Access-Control-Allow-Credentials", "true")
@@ -163,7 +146,6 @@ func RecoveryMiddleware(next http.Handler) http.Handler {
 				SendError(w, http.StatusInternalServerError, "服务器内部错误")
 			}
 		}()
-
 		next.ServeHTTP(w, r)
 	})
 }

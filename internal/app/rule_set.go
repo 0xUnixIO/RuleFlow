@@ -30,13 +30,9 @@ func ParseRuleSet(content string, sourceFormat string) ([]RuleSetRule, error) {
 		}
 
 		switch sourceFormat {
-		case "surge", "clash-classical":
+		case "surge":
 			rule, ok := parseClassicalRule(line)
 			if ok {
-				rules = append(rules, rule)
-			}
-		case "clash-domain":
-			if rule, ok := parseDomainListRule(line); ok {
 				rules = append(rules, rule)
 			}
 		case "clash-ipcidr", "ip-list":

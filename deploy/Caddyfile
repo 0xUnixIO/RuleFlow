@@ -1,0 +1,3 @@
+{$DOMAIN} {
+    reverse_proxy ruleflow:8080
+}

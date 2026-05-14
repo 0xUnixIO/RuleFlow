@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from "react-router";
 import AppShell from "@/components/layout/app-shell";
 import LoginPage from "@/pages/login";
+import SetupPage from "@/pages/setup";
 import DashboardPage from "@/pages/dashboard";
 import SubscriptionsPage from "@/pages/subscriptions";
 import NodesPage from "@/pages/nodes";
@@ -16,6 +17,7 @@ export default function App() {
     <Routes>
       {/* Public routes — no layout */}
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/setup" element={<SetupPage />} />
       <Route path="/converter" element={<ConverterPage />} />
 
       {/* Authenticated routes — wrapped in AppShell */}

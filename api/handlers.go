@@ -1171,41 +1171,33 @@ func (h *Handlers) GetNodeStats(w http.ResponseWriter, r *http.Request) {
 // 路由: GET /convert?url=https://example.com/sub&template=154025419991939
 func (h *Handlers) ConvertSubscription(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	logToken := "convert"
 	params, err := parseConvertRequestParams(r)
 	if err != nil {
-		h.recordStandaloneConfigAccess(r, logToken, http.StatusBadRequest, false, nil, err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	logToken = buildConvertLogToken(params)
 	if params.subURL == "" {
-		h.recordStandaloneConfigAccess(r, logToken, http.StatusBadRequest, false, nil, "缺少 url 参数")
 		http.Error(w, "缺少 url 参数", http.StatusBadRequest)
 		return
 	}
 
 	if h.templateService == nil {
-		h.recordStandaloneConfigAccess(r, logToken, http.StatusInternalServerError, false, nil, "模板服务不可用")
 		http.Error(w, "模板服务不可用", http.StatusInternalServerError)
 		return
 	}
 
 	content, _, err := app.FetchSubscriptionContent(ctx, params.subURL)
 	if err != nil {
-		h.recordStandaloneConfigAccess(r, logToken, http.StatusBadGateway, false, nil, "获取订阅失败: "+err.Error())
 		http.Error(w, "获取订阅失败: "+err.Error(), http.StatusBadGateway)
 		return
 	}
 
 	proxyNodes, err := app.ParseSubscription(content)
 	if err != nil {
-		h.recordStandaloneConfigAccess(r, logToken, http.StatusBadRequest, false, nil, "解析订阅失败: "+err.Error())
 		http.Error(w, "解析订阅失败: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 	if len(proxyNodes) == 0 {
-		h.recordStandaloneConfigAccess(r, logToken, http.StatusServiceUnavailable, false, nil, "订阅中没有可用节点")
 		http.Error(w, "订阅中没有可用节点", http.StatusServiceUnavailable)
 		return
 	}
@@ -1216,7 +1208,6 @@ func (h *Handlers) ConvertSubscription(w http.ResponseWriter, r *http.Request) {
 		var tpl *database.Template
 		tpl, err = h.templateService.GetTemplateByID(ctx, params.templateID)
 		if err != nil {
-			h.recordStandaloneConfigAccess(r, logToken, http.StatusNotFound, false, nil, err.Error())
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
@@ -1226,20 +1217,16 @@ func (h *Handlers) ConvertSubscription(w http.ResponseWriter, r *http.Request) {
 
 	target, err := resolveConfigTarget(params.target, targetFallback)
 	if err != nil {
-		h.recordStandaloneConfigAccess(r, logToken, http.StatusBadRequest, false, nil, err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	configContent, err := buildConfigContent(r, proxyNodes, templateContent, target)
 	if err != nil {
-		h.recordStandaloneConfigAccess(r, logToken, http.StatusInternalServerError, false, nil, "生成配置失败: "+err.Error())
 		http.Error(w, "生成配置失败: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	nodeCount := len(proxyNodes)
-	h.recordStandaloneConfigAccess(r, logToken, http.StatusOK, true, &nodeCount, "")
 	writeConfigResponse(w, r, target, configContent, len(proxyNodes))
 }
 

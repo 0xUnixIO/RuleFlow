@@ -1,4 +1,4 @@
-FROM oven/bun:1 AS frontend
+FROM oven/bun:1.2 AS frontend
 
 WORKDIR /app/web-ui
 COPY web-ui/package.json web-ui/bun.lock ./
@@ -6,7 +6,7 @@ RUN bun install --frozen-lockfile
 COPY web-ui/ .
 RUN bun run build
 
-FROM golang:1.24-alpine AS builder
+FROM golang:1.25-alpine AS builder
 
 WORKDIR /app
 

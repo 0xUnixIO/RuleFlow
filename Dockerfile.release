@@ -1,0 +1,9 @@
+FROM gcr.io/distroless/static:nonroot
+
+ARG TARGETARCH=amd64
+
+COPY --chmod=755 ruleflow-linux-${TARGETARCH} /ruleflow
+
+EXPOSE 8080
+
+CMD ["/ruleflow"]

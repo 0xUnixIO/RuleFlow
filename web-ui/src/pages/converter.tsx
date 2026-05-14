@@ -36,6 +36,16 @@ export default function ConverterPage() {
 
   const filteredTemplates = templates.filter((t) => t.target === target);
 
+  // 切换 target 后自动选中第一个可用模板
+  useEffect(() => {
+    if (filteredTemplates.length > 0) {
+      setTemplateId(String(filteredTemplates[0].id));
+    } else {
+      setTemplateId("");
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [target, templates]);
+
   useEffect(() => {
     if (!templateId) { setTemplateContent(""); return; }
     fetch(`/api/templates/public/${templateId}`).then((r) => r.json()).then((d) => {
@@ -43,22 +53,22 @@ export default function ConverterPage() {
     }).catch(() => {});
   }, [templateId]);
 
-  const convertUrl = subUrl
-    ? `${window.location.origin}/convert?url=${encodeURIComponent(subUrl)}&target=${target}${templateId ? `&template=${templateId}` : ""}`
+  const convertUrl = subUrl && templateId
+    ? `${window.location.origin}/convert?url=${encodeURIComponent(subUrl)}&target=${target}&template=${templateId}`
     : "";
 
   const fetchPreview = useCallback(async () => {
-    if (!subUrl) return;
+    if (!subUrl || !templateId) return;
     setLoading(true);
     try {
-      const res = await fetch(`/convert?url=${encodeURIComponent(subUrl)}&target=${target}${templateId ? `&template=${templateId}` : ""}`);
+      const res = await fetch(`/convert?url=${encodeURIComponent(subUrl)}&target=${target}&template=${templateId}`);
       setPreview(await res.text());
-    } catch { setPreview("Failed to fetch preview"); }
+    } catch { setPreview("获取预览失败"); }
     finally { setLoading(false); }
   }, [subUrl, target, templateId]);
 
   useEffect(() => {
-    if (!subUrl) { setPreview(""); return; }
+    if (!subUrl || !templateId) { setPreview(""); return; }
     const timer = setTimeout(fetchPreview, 800);
     return () => clearTimeout(timer);
   }, [subUrl, target, templateId, fetchPreview]);
@@ -66,7 +76,7 @@ export default function ConverterPage() {
   async function copyUrl() {
     if (!convertUrl) return;
     await navigator.clipboard.writeText(convertUrl);
-    toast.success("URL copied");
+    toast.success("URL 已复制");
   }
 
   return (
@@ -78,31 +88,32 @@ export default function ConverterPage() {
             <Shield className="size-5" />
           </div>
           <div>
-            <h1 className="font-heading text-2xl font-bold tracking-tight">Subscription Converter</h1>
-            <p className="text-sm text-muted-foreground">Convert subscription links to different formats</p>
+            <h1 className="font-heading text-2xl font-bold tracking-tight">订阅转换</h1>
+            <p className="text-sm text-muted-foreground">将订阅链接转换为不同客户端格式</p>
           </div>
         </div>
 
         <Card>
           <CardContent className="pt-6 space-y-4">
             <div className="space-y-2">
-              <Label>Subscription URL</Label>
+              <Label>订阅 URL</Label>
               <Input value={subUrl} onChange={(e) => setSubUrl(e.target.value)} placeholder="https://your-subscription-url..." />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label>Output Format</Label>
-                <Select value={target} onValueChange={(v) => { setTarget(v); setTemplateId(""); }}>
+                <Label>输出格式</Label>
+                <Select value={target} onValueChange={setTarget}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>{TARGETS.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Template (optional)</Label>
-                <Select value={templateId} onValueChange={setTemplateId}>
-                  <SelectTrigger><SelectValue placeholder="Default" /></SelectTrigger>
+                <Label>模板</Label>
+                <Select value={templateId} onValueChange={setTemplateId} disabled={filteredTemplates.length === 0}>
+                  <SelectTrigger>
+                    <SelectValue placeholder={filteredTemplates.length === 0 ? "暂无可用模板" : "选择模板"} />
+                  </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">Default (no template)</SelectItem>
                     {filteredTemplates.map((t) => <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
@@ -110,7 +121,7 @@ export default function ConverterPage() {
             </div>
             {convertUrl && (
               <div className="space-y-2">
-                <Label>Generated URL</Label>
+                <Label>生成的 URL</Label>
                 <div className="flex gap-2">
                   <Input readOnly value={convertUrl} className="font-mono text-xs" />
                   <Button variant="outline" size="sm" onClick={copyUrl}><Copy className="size-4" /></Button>
@@ -122,28 +133,28 @@ export default function ConverterPage() {
 
         <Tabs defaultValue="preview">
           <TabsList>
-            <TabsTrigger value="preview">Conversion Preview</TabsTrigger>
-            <TabsTrigger value="template">Template Content</TabsTrigger>
+            <TabsTrigger value="preview">转换预览</TabsTrigger>
+            <TabsTrigger value="template">模板内容</TabsTrigger>
           </TabsList>
           <TabsContent value="preview">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle className="text-base">Preview</CardTitle>
-                {loading && <Badge variant="outline">Loading...</Badge>}
+                <CardTitle className="text-base">预览</CardTitle>
+                {loading && <Badge variant="outline">加载中…</Badge>}
               </CardHeader>
               <CardContent>
                 <pre className="max-h-96 overflow-auto rounded-md bg-muted p-3 text-xs font-mono whitespace-pre-wrap">
-                  {preview || "Enter a subscription URL to see preview"}
+                  {preview || "输入订阅 URL 以查看预览"}
                 </pre>
               </CardContent>
             </Card>
           </TabsContent>
           <TabsContent value="template">
             <Card>
-              <CardHeader><CardTitle className="text-base">Template Content</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="text-base">模板内容</CardTitle></CardHeader>
               <CardContent>
                 <pre className="max-h-96 overflow-auto rounded-md bg-muted p-3 text-xs font-mono whitespace-pre-wrap">
-                  {templateContent || "Select a template to view its content"}
+                  {templateContent || "选择模板以查看其内容"}
                 </pre>
               </CardContent>
             </Card>
