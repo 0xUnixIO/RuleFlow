@@ -302,48 +302,13 @@ rule-providers:
     interval: 43200
     url: https://ruleset.skk.moe/Clash/non_ip/download.txt
     path: ./sukkaw_ruleset/download_non_ip.txt
-  ai_ai:
+  ai-proxy:
     type: http
     behavior: classical
     format: text
     interval: 43200
-    url: /rulesets/ai_ai?target=clash-classical
+    url: /rulesets/ai-proxy?target=clash-classical
     path: ./sukkaw_ruleset/ai_ai.txt
-  non_ip_ai:
-    type: http
-    behavior: classical
-    format: text
-    interval: 43200
-    url: /rulesets/non_ip_ai?target=clash-classical
-    path: ./sukkaw_ruleset/non_ip_ai.txt
-  need_direct:
-    type: http
-    behavior: classical
-    format: text
-    interval: 43200
-    url: /rulesets/need_direct?target=clash-classical
-    path: ./sukkaw_ruleset/need_direct.txt
-  wireguard_home:
-    type: http
-    behavior: classical
-    format: text
-    interval: 43200
-    url: /rulesets/wireguard_home?target=clash-classical
-    path: ./sukkaw_ruleset/wireguard_home.txt
-  need_proxy:
-    type: http
-    behavior: classical
-    format: text
-    interval: 43200
-    url: /rulesets/need_proxy?target=clash-classical
-    path: ./sukkaw_ruleset/need_proxy.txt
-  need_jp:
-    type: http
-    behavior: classical
-    format: text
-    interval: 43200
-    url: /rulesets/need_jp?target=clash-classical
-    path: ./sukkaw_ruleset/need_jp.txt
   speedtest:
     type: http
     behavior: domain
@@ -361,9 +326,7 @@ rules:
   - RULE-SET,reject_non_ip,REJECT
   - RULE-SET,reject_non_ip_no_drop,REJECT
   - RULE-SET,reject_ip,REJECT
-  - RULE-SET,need_jp,🇯🇵 JP
-  - RULE-SET,ai_ai,🤖 AI
-  - RULE-SET,non_ip_ai,🤖 AI
+  - RULE-SET,ai-proxy,🤖 AI
   - RULE-SET,need_direct,DIRECT
   - RULE-SET,wireguard_home,🏠 Home
   - RULE-SET,need_proxy,🚀 Proxy

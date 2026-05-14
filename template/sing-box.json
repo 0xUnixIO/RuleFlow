@@ -209,18 +209,10 @@
       },
       {
         "type": "remote",
-        "tag": "ai_ai",
-        "url": "/rulesets/ai_ai?target=sing-box",
+        "tag": "ai-proxy",
+        "url": "/rulesets/ai-proxy?target=sing-box",
         "format": "binary",
         "http_client": { "detour": "🌐 Proxy" },
-        "update_interval": "12h"
-      },
-      {
-        "type": "remote",
-        "tag": "need_direct",
-        "url": "/rulesets/need_direct?target=sing-box",
-        "format": "binary",
-        "http_client": { "detour": "DIRECT" },
         "update_interval": "12h"
       },
       {
@@ -358,38 +350,6 @@
         "format": "source",
         "http_client": { "detour": "🌐 Proxy" },
         "update_interval": "12h"
-      },
-      {
-        "type": "remote",
-        "tag": "china_ip",
-        "url": "/rulesets/china_ip?target=sing-box",
-        "format": "source",
-        "http_client": { "detour": "🌐 Proxy" },
-        "update_interval": "12h"
-      },
-      {
-        "type": "remote",
-        "tag": "need_proxy",
-        "url": "/rulesets/need_proxy?target=sing-box",
-        "format": "binary",
-        "http_client": { "detour": "🌐 Proxy" },
-        "update_interval": "12h"
-      },
-      {
-        "type": "remote",
-        "tag": "non_ip_ai",
-        "url": "/rulesets/non_ip_ai?target=sing-box",
-        "format": "binary",
-        "http_client": { "detour": "🌐 Proxy" },
-        "update_interval": "12h"
-      },
-      {
-        "type": "remote",
-        "tag": "wireguard_home",
-        "url": "/rulesets/wireguard_home?target=sing-box",
-        "format": "binary",
-        "http_client": { "detour": "🌐 Proxy" },
-        "update_interval": "12h"
       }
     ],
     "rules": [
@@ -427,7 +387,7 @@
         "no_drop": true
       },
       {
-        "rule_set": ["ai_non_ip", "ai_ai", "non_ip_ai"],
+        "rule_set": ["ai_non_ip", "ai-proxy", "non_ip_ai"],
         "outbound": "🤖 AI"
       },
       {
