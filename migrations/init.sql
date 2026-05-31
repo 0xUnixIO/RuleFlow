@@ -1,5 +1,4 @@
 -- RuleFlow 完整初始化脚本
--- 适用于每次重新建库后一次性执行
 
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
@@ -9,7 +8,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TABLE subscriptions (
+CREATE TABLE IF NOT EXISTS subscriptions (
     id BIGINT PRIMARY KEY,
     name VARCHAR(255) NOT NULL UNIQUE,
     url TEXT NOT NULL,
@@ -28,19 +27,22 @@ CREATE TABLE subscriptions (
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_subscriptions_name ON subscriptions(name);
-CREATE INDEX idx_subscriptions_enabled ON subscriptions(enabled) WHERE enabled = true;
+CREATE INDEX IF NOT EXISTS idx_subscriptions_name ON subscriptions(name);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_enabled ON subscriptions(enabled) WHERE enabled = true;
 
-CREATE TRIGGER update_subscriptions_updated_at
-    BEFORE UPDATE ON subscriptions
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+DO $$ BEGIN
+    CREATE TRIGGER update_subscriptions_updated_at
+        BEFORE UPDATE ON subscriptions
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 COMMENT ON COLUMN subscriptions.auto_refresh IS '是否自动刷新订阅';
 COMMENT ON COLUMN subscriptions.refresh_interval IS '自动刷新间隔（秒）';
 COMMENT ON COLUMN subscriptions.filter_rules IS '节点过滤规则：exclude_keywords（排除关键词列表）、exclude_regex（排除正则）、include_protocols（协议白名单）';
 COMMENT ON COLUMN subscriptions.userinfo IS '订阅流量信息，来自响应头 Subscription-Userinfo';
 
-CREATE TABLE templates (
+CREATE TABLE IF NOT EXISTS templates (
     id BIGINT PRIMARY KEY,
     name VARCHAR(255) NOT NULL UNIQUE,
     description TEXT,
@@ -54,14 +56,17 @@ CREATE TABLE templates (
         CHECK (target IN ('clash-mihomo', 'stash', 'surge', 'sing-box', 'loon', 'shadowrocket'))
 );
 
-CREATE INDEX idx_templates_name ON templates(name);
-CREATE INDEX idx_templates_target ON templates(target);
+CREATE INDEX IF NOT EXISTS idx_templates_name ON templates(name);
+CREATE INDEX IF NOT EXISTS idx_templates_target ON templates(target);
 
-CREATE TRIGGER update_templates_updated_at
-    BEFORE UPDATE ON templates
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+DO $$ BEGIN
+    CREATE TRIGGER update_templates_updated_at
+        BEFORE UPDATE ON templates
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TABLE rule_sources (
+CREATE TABLE IF NOT EXISTS rule_sources (
     id BIGINT PRIMARY KEY,
     name VARCHAR(255) NOT NULL UNIQUE,
     description TEXT,
@@ -82,15 +87,18 @@ CREATE TABLE rule_sources (
         CHECK (source_format IN ('surge', 'clash-classical', 'domain-list', 'ip-list'))
 );
 
-CREATE INDEX idx_rule_sources_name ON rule_sources(name);
-CREATE INDEX idx_rule_sources_enabled ON rule_sources(enabled) WHERE enabled = true;
-CREATE INDEX idx_rule_sources_auto_refresh ON rule_sources(auto_refresh) WHERE auto_refresh = true;
+CREATE INDEX IF NOT EXISTS idx_rule_sources_name ON rule_sources(name);
+CREATE INDEX IF NOT EXISTS idx_rule_sources_enabled ON rule_sources(enabled) WHERE enabled = true;
+CREATE INDEX IF NOT EXISTS idx_rule_sources_auto_refresh ON rule_sources(auto_refresh) WHERE auto_refresh = true;
 
-CREATE TRIGGER update_rule_sources_updated_at
-    BEFORE UPDATE ON rule_sources
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+DO $$ BEGIN
+    CREATE TRIGGER update_rule_sources_updated_at
+        BEFORE UPDATE ON rule_sources
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TABLE config_policies (
+CREATE TABLE IF NOT EXISTS config_policies (
     id BIGINT PRIMARY KEY,
     name VARCHAR(255) NOT NULL UNIQUE,
     token VARCHAR(64) NOT NULL UNIQUE,
@@ -109,13 +117,16 @@ CREATE TABLE config_policies (
         CHECK (target IN ('clash-mihomo', 'stash', 'surge', 'sing-box'))
 );
 
-CREATE INDEX idx_config_policies_name ON config_policies(name);
-CREATE INDEX idx_config_policies_enabled ON config_policies(enabled) WHERE enabled = true;
-CREATE INDEX idx_config_policies_tags ON config_policies USING GIN(tags);
+CREATE INDEX IF NOT EXISTS idx_config_policies_name ON config_policies(name);
+CREATE INDEX IF NOT EXISTS idx_config_policies_enabled ON config_policies(enabled) WHERE enabled = true;
+CREATE INDEX IF NOT EXISTS idx_config_policies_tags ON config_policies USING GIN(tags);
 
-CREATE TRIGGER update_config_policies_updated_at
-    BEFORE UPDATE ON config_policies
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+DO $$ BEGIN
+    CREATE TRIGGER update_config_policies_updated_at
+        BEFORE UPDATE ON config_policies
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 COMMENT ON TABLE config_policies IS '配置生成策略表';
 COMMENT ON COLUMN config_policies.subscription_ids IS '关联的订阅源 ID，可以从多个订阅源合并节点';
@@ -124,7 +135,7 @@ COMMENT ON COLUMN config_policies.template_name IS '使用的规则模板，为�
 COMMENT ON COLUMN config_policies.node_filters IS '节点过滤条件，JSON 格式存储复杂的过滤逻辑';
 COMMENT ON COLUMN config_policies.last_accessed_at IS '用户最近一次成功请求订阅配置的时间';
 
-CREATE TABLE config_access_logs (
+CREATE TABLE IF NOT EXISTS config_access_logs (
     id BIGINT PRIMARY KEY,
     policy_id BIGINT REFERENCES config_policies(id) ON DELETE CASCADE,
     token VARCHAR(64),
@@ -138,8 +149,8 @@ CREATE TABLE config_access_logs (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_config_access_logs_policy_id_created_at ON config_access_logs(policy_id, created_at DESC);
-CREATE INDEX idx_config_access_logs_created_at ON config_access_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_config_access_logs_policy_id_created_at ON config_access_logs(policy_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_config_access_logs_created_at ON config_access_logs(created_at DESC);
 
 COMMENT ON TABLE config_access_logs IS '订阅配置访问日志';
 COMMENT ON COLUMN config_access_logs.policy_id IS '被访问的配置策略 ID，token 无效时可为空';
@@ -152,7 +163,7 @@ COMMENT ON COLUMN config_access_logs.cache_hit IS '是否命中配置缓存';
 COMMENT ON COLUMN config_access_logs.node_count IS '本次返回的节点数，失败时可为空';
 COMMENT ON COLUMN config_access_logs.error_message IS '失败原因';
 
-CREATE TABLE nodes (
+CREATE TABLE IF NOT EXISTS nodes (
     id BIGINT PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     protocol VARCHAR(20) NOT NULL,
@@ -169,16 +180,19 @@ CREATE TABLE nodes (
         CHECK (protocol IN ('trojan', 'vmess', 'vless', 'ss', 'wireguard', 'anytls', 'hysteria2', 'tuic'))
 );
 
-CREATE INDEX idx_nodes_source_id ON nodes(source_id) WHERE source_id IS NOT NULL;
-CREATE INDEX idx_nodes_protocol ON nodes(protocol);
-CREATE INDEX idx_nodes_enabled ON nodes(enabled) WHERE enabled = true;
-CREATE INDEX idx_nodes_tags ON nodes USING GIN(tags);
-CREATE UNIQUE INDEX uq_nodes_manual_identity ON nodes(name, server, port) WHERE source_id IS NULL;
-CREATE UNIQUE INDEX uq_nodes_subscription_identity ON nodes(source_id, name, server, port) WHERE source_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_nodes_source_id ON nodes(source_id) WHERE source_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_nodes_protocol ON nodes(protocol);
+CREATE INDEX IF NOT EXISTS idx_nodes_enabled ON nodes(enabled) WHERE enabled = true;
+CREATE INDEX IF NOT EXISTS idx_nodes_tags ON nodes USING GIN(tags);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_nodes_manual_identity ON nodes(name, server, port) WHERE source_id IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_nodes_subscription_identity ON nodes(source_id, name, server, port) WHERE source_id IS NOT NULL;
 
-CREATE TRIGGER update_nodes_updated_at
-    BEFORE UPDATE ON nodes
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+DO $$ BEGIN
+    CREATE TRIGGER update_nodes_updated_at
+        BEFORE UPDATE ON nodes
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 COMMENT ON TABLE nodes IS '节点表，存储订阅和手动添加的代理节点';
 COMMENT ON COLUMN nodes.protocol IS '协议类型：trojan, vmess, vless, ss, wireguard, anytls, hysteria2, tuic';
@@ -186,7 +200,7 @@ COMMENT ON COLUMN nodes.config IS '协议特定配置（密码、UUID 等），J
 COMMENT ON COLUMN nodes.source_id IS '订阅 ID；为空表示手动添加节点';
 COMMENT ON COLUMN nodes.last_synced_at IS '最后同步时间（订阅节点）';
 
-CREATE TABLE backup_settings (
+CREATE TABLE IF NOT EXISTS backup_settings (
     id INTEGER PRIMARY KEY DEFAULT 1,
     enabled BOOLEAN NOT NULL DEFAULT false,
     r2_account_id TEXT NOT NULL DEFAULT '',
@@ -197,9 +211,9 @@ CREATE TABLE backup_settings (
     CONSTRAINT backup_settings_singleton CHECK (id = 1)
 );
 
-INSERT INTO backup_settings (id) VALUES (1);
+INSERT INTO backup_settings (id) VALUES (1) ON CONFLICT DO NOTHING;
 
-CREATE TABLE backup_records (
+CREATE TABLE IF NOT EXISTS backup_records (
     id BIGSERIAL PRIMARY KEY,
     file_key TEXT NOT NULL DEFAULT '',
     file_size BIGINT NOT NULL DEFAULT 0,
@@ -208,14 +222,14 @@ CREATE TABLE backup_records (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_backup_records_created_at ON backup_records(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_backup_records_created_at ON backup_records(created_at DESC);
 
-CREATE TABLE app_settings (
+CREATE TABLE IF NOT EXISTS app_settings (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
 
-CREATE TABLE admin_users (
+CREATE TABLE IF NOT EXISTS admin_users (
     id            BIGSERIAL PRIMARY KEY,
     username      TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
