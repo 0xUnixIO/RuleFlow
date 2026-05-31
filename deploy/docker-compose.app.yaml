@@ -2,10 +2,9 @@ services:
   ruleflow:
     image: ghcr.io/0xunixio/ruleflow:latest
     restart: unless-stopped
-    ports:
-      - "${PORT:-8080}:8080"
+    network_mode: host
     environment:
-      PORT: "8080"
+      PORT: ${PORT:-8080}
       DATABASE_URL: ${DATABASE_URL}
       REDIS_ADDR: ${REDIS_ADDR}
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
