@@ -24,6 +24,7 @@ var countryRules = []struct {
 	{"🇦🇺", []string{"澳大利亚", "澳洲", "悉尼", "墨尔本", "au", "australia", "sydney", "melbourne"}},
 	{"🇷🇺", []string{"俄罗斯", "俄羅斯", "ru", "russia", "moscow", "莫斯科"}},
 	{"🇮🇳", []string{"印度", "in", "india", "mumbai", "chennai"}},
+	{"🇵🇰", []string{"巴基斯坦", "pk", "pakistan", "karachi", "lahore", "islamabad"}},
 	{"🇧🇷", []string{"巴西", "br", "brazil"}},
 	{"🇦🇷", []string{"阿根廷", "ar", "argentina"}},
 	{"🇲🇾", []string{"马来西亚", "馬來西亞", "my", "malaysia", "kuala lumpur"}},

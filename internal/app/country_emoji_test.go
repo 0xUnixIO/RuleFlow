@@ -34,6 +34,11 @@ func TestAddCountryEmoji(t *testing.T) {
 			want: "🇭🇰 HK-01",
 		},
 		{
+			name: "matches pakistan",
+			in:   "PK-Karachi-01",
+			want: "🇵🇰 PK-Karachi-01",
+		},
+		{
 			name: "keeps original name when no keyword matches",
 			in:   "relay-node-01",
 			want: "relay-node-01",
