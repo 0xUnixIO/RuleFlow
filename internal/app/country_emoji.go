@@ -51,6 +51,7 @@ var countryRules = []struct {
 	{"🇭🇺", []string{"匈牙利", "hu", "hungary"}},
 	{"🇷🇴", []string{"罗马尼亚", "羅馬尼亞", "ro", "romania"}},
 	{"🇺🇦", []string{"乌克兰", "烏克蘭", "ua", "ukraine"}},
+	{"🇳🇬", []string{"尼日利亚", "尼日利亞", "ng", "nigeria", "lagos", "abuja"}},
 	{"🇿🇦", []string{"南非", "za", "south africa"}},
 	{"🇲🇽", []string{"墨西哥", "mx", "mexico"}},
 	{"🇨🇱", []string{"智利", "cl", "chile"}},
