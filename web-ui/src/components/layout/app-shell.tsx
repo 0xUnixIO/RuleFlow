@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Outlet, Link, useLocation } from "react-router";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
@@ -24,8 +24,12 @@ import {
   CloudUpload,
   RefreshCw,
   PanelLeft,
+  Github,
   X,
 } from "lucide-react";
+
+// 仓库地址（左侧底部 GitHub 链接）
+const GITHUB_URL = "https://github.com/0xUnixIO/RuleFlow";
 
 interface NavItem {
   label: string;
@@ -48,6 +52,51 @@ export default function AppShell() {
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [version, setVersion] = useState<string>("");
+  const [checking, setChecking] = useState(false);
+
+  // 挂载时拉取当前版本号（后端 /version 返回裸 JSON {"version":"..."}）
+  useEffect(() => {
+    fetch("/version", { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { version?: string } | null) => {
+        if (data?.version) setVersion(data.version);
+      })
+      .catch(() => {
+        /* 忽略版本拉取失败 */
+      });
+  }, []);
+
+  // 检查更新：对比 GitHub 最新 Release
+  const handleCheckUpdate = useCallback(async () => {
+    setChecking(true);
+    try {
+      const res = await fetch(
+        "https://api.github.com/repos/0xUnixIO/RuleFlow/releases/latest"
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as { tag_name?: string; html_url?: string };
+      const latest = data.tag_name;
+      if (!latest) throw new Error("未获取到最新版本");
+
+      const normalize = (v: string) => v.replace(/^v/, "");
+      if (version && normalize(latest) === normalize(version)) {
+        toast.success(`已是最新版本 ${version}`);
+      } else {
+        toast.info(`发现新版本 ${latest}`, {
+          description: `当前版本 ${version || "未知"}`,
+          action: {
+            label: "查看",
+            onClick: () => window.open(data.html_url || GITHUB_URL, "_blank"),
+          },
+        });
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? `检查更新失败：${err.message}` : "检查更新失败");
+    } finally {
+      setChecking(false);
+    }
+  }, [version]);
 
   const handleRefreshCache = useCallback(async () => {
     setRefreshing(true);
@@ -165,7 +214,7 @@ export default function AppShell() {
           <Separator className="bg-sidebar-border" />
 
           {/* Sidebar footer */}
-          <div className="p-3">
+          <div className="flex flex-col gap-2 p-3">
             <Button
               variant="outline"
               size="sm"
@@ -178,6 +227,37 @@ export default function AppShell() {
               />
               {refreshing ? "清理中…" : "刷新缓存"}
             </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full justify-start gap-2 border-sidebar-border text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              onClick={handleCheckUpdate}
+              disabled={checking}
+            >
+              <RefreshCw
+                className={cn("size-3.5", checking && "animate-spin")}
+              />
+              {checking ? "检查中…" : "检查更新"}
+            </Button>
+
+            {/* GitHub 链接与版本号 */}
+            <div className="flex items-center justify-between px-1 pt-1">
+              <a
+                href={GITHUB_URL}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="flex items-center gap-1.5 text-xs text-sidebar-foreground/60 transition-colors hover:text-sidebar-foreground"
+              >
+                <Github className="size-3.5" />
+                GitHub
+              </a>
+              {version && (
+                <span className="font-mono text-[0.7rem] text-sidebar-foreground/40">
+                  {version}
+                </span>
+              )}
+            </div>
           </div>
         </aside>
 
