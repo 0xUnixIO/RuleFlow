@@ -22,7 +22,7 @@ const TARGETS = [
 export default function ConverterPage() {
   const [subUrl, setSubUrl] = useState("");
   const [target, setTarget] = useState("clash-mihomo");
-  const [templateId, setTemplateId] = useState("");
+  const [templateName, setTemplateName] = useState("");
   const [templates, setTemplates] = useState<PublicTemplate[]>([]);
   const [templateContent, setTemplateContent] = useState("");
   const [preview, setPreview] = useState("");
@@ -35,13 +35,15 @@ export default function ConverterPage() {
   }, []);
 
   const filteredTemplates = templates.filter((t) => t.target === target);
+  const selectedTemplate = filteredTemplates.find((t) => t.name === templateName);
+  const templateId = selectedTemplate ? String(selectedTemplate.id) : "";
 
   // 切换 target 后自动选中第一个可用模板
   useEffect(() => {
     if (filteredTemplates.length > 0) {
-      setTemplateId(String(filteredTemplates[0].id));
+      setTemplateName(filteredTemplates[0].name);
     } else {
-      setTemplateId("");
+      setTemplateName("");
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [target, templates]);
@@ -58,7 +60,7 @@ export default function ConverterPage() {
     : "";
 
   const fetchPreview = useCallback(async () => {
-    if (!subUrl || !templateId) return;
+    if (!subUrl || !templateName) return;
     setLoading(true);
     try {
       const res = await fetch(`/convert?url=${encodeURIComponent(subUrl)}&target=${target}&template=${templateId}`);
@@ -68,10 +70,10 @@ export default function ConverterPage() {
   }, [subUrl, target, templateId]);
 
   useEffect(() => {
-    if (!subUrl || !templateId) { setPreview(""); return; }
+    if (!subUrl || !templateName) { setPreview(""); return; }
     const timer = setTimeout(fetchPreview, 800);
     return () => clearTimeout(timer);
-  }, [subUrl, target, templateId, fetchPreview]);
+  }, [subUrl, target, templateName, fetchPreview]);
 
   async function copyUrl() {
     if (!convertUrl) return;
@@ -109,12 +111,12 @@ export default function ConverterPage() {
               </div>
               <div className="space-y-2">
                 <Label>模板</Label>
-                <Select value={templateId} onValueChange={setTemplateId} disabled={filteredTemplates.length === 0}>
+                <Select value={templateName} onValueChange={setTemplateName} disabled={filteredTemplates.length === 0}>
                   <SelectTrigger>
                     <SelectValue placeholder={filteredTemplates.length === 0 ? "暂无可用模板" : "选择模板"} />
                   </SelectTrigger>
                   <SelectContent>
-                    {filteredTemplates.map((t) => <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>)}
+                    {filteredTemplates.map((t) => <SelectItem key={t.id} value={t.name}>{t.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
