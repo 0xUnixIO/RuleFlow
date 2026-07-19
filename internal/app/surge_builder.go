@@ -624,7 +624,8 @@ func surgeProxyLine(node *ProxyNode, name string) string {
 	case "ss":
 		cipher := strOpt("cipher")
 		password := strOpt("password")
-		return appendUnderlyingProxy(fmt.Sprintf("%s = ss, %s, %d, encrypt-method=%s, password=%s",
+		// Surge 默认不为 SS 开启 UDP 转发，须显式 udp-relay=true，否则 TCP 正常而 DNS/游戏等 UDP 不通。
+		return appendUnderlyingProxy(fmt.Sprintf("%s = ss, %s, %d, encrypt-method=%s, password=%s, udp-relay=true",
 			name, node.Server, node.Port, cipher, password))
 
 	case "hysteria2", "hy2":

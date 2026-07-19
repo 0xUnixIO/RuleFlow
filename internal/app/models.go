@@ -329,8 +329,9 @@ func addShadowsocksFields(proxy *Proxy, opts map[string]interface{}) {
 	if password, ok := opts["password"].(string); ok {
 		proxy.Password = password
 	}
-	// SS 通常不需要 UDP
-	proxy.UDP = false
+	// Clash 等 YAML 客户端：udp: true 才会走 SS 的 UDP 中继（服务端也需开启 UDP）。
+	// 默认 buildProxies 已是 true，这里保持 true，避免再关掉。
+	proxy.UDP = true
 }
 
 func addHysteria2Fields(proxy *Proxy, opts map[string]interface{}) {

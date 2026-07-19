@@ -5,6 +5,43 @@ import (
 	"testing"
 )
 
+func TestBuildSurgeSSEnablesUDPRelay(t *testing.T) {
+	nodes := []*ProxyNode{
+		{
+			Protocol: "ss",
+			Name:     "TW HINET",
+			Server:   "ss.example.com",
+			Port:     8388,
+			Options: map[string]interface{}{
+				"cipher":   "2022-blake3-aes-128-gcm",
+				"password": "serverpsk:userpsk",
+			},
+		},
+	}
+
+	templateContent := `[General]
+loglevel = notify
+
+[Proxy]
+__NODES__
+`
+
+	config, err := BuildSurgeFromTemplateContent(nodes, templateContent)
+	if err != nil {
+		t.Fatalf("生成 Surge 配置失败: %v", err)
+	}
+	if !strings.Contains(config, "encrypt-method=2022-blake3-aes-128-gcm") {
+		t.Fatalf("期望包含 encrypt-method，实际配置为:\n%s", config)
+	}
+	if !strings.Contains(config, "udp-relay=true") {
+		t.Fatalf("期望 SS 节点带 udp-relay=true，实际配置为:\n%s", config)
+	}
+	// 基本形态：ss, host, port, ...
+	if !strings.Contains(config, "= ss, ss.example.com, 8388,") {
+		t.Fatalf("期望 SS 代理行格式正确，实际配置为:\n%s", config)
+	}
+}
+
 func TestBuildSurgeFromTemplateContentAddsUnderlyingProxy(t *testing.T) {
 	nodes := []*ProxyNode{
 		{
